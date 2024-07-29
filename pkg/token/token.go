@@ -8,14 +8,14 @@ import (
 )
 
 type Token struct {
-	UID      string `json:"uid"`
-	TunnelID string `json:"tunnel_id"`
-	Token    string `json:"token"`
+	TunnelID string `json:"tunnel_id"` // 隧道 ID
+	Token    string `json:"token"`     // 隧道 令牌
+	Server   string `json:"server"`    // 服务器地址
 }
 
 // 生成 Token
-func GenerateToken(uid string) (string, error) {
-	t := Token{UID: uid, TunnelID: uuid.New().String()}
+func GenerateToken(uid, server string) (string, error) {
+	t := Token{TunnelID: uuid.New().String(), Server: server}
 	jsonData, err := json.Marshal(t)
 	if err != nil {
 		return "", err

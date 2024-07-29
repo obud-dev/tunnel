@@ -7,6 +7,7 @@ type Route struct {
 	Hostname string `gorm:"not null"` // 域名
 	Prefix   string // 路由前缀
 	Target   string `gorm:"not null"` // 内网目标服务地址
+	Type     string `gorm:"not null"` // 转发类型 http tcp udp ssh rdp
 }
 
 func (r *Route) TableName() string {
