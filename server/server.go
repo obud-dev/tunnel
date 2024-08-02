@@ -20,6 +20,7 @@ const (
 
 var (
 	clients = make(map[string]net.Conn)
+	channel = make(chan string)
 )
 
 func main() {
