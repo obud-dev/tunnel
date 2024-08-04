@@ -12,10 +12,8 @@ import (
 )
 
 const (
-	// DefaultBindAddr is the default address to bind to
-	DefaultBindAddr = ":5429"
-	// DefaultServerAddr is the default address of the server
-	DefaultServerAddr = ":8000"
+	DefaultListenOn = ":5429"
+	DefaultApi      = ":8000"
 )
 
 var (
@@ -24,21 +22,21 @@ var (
 )
 
 func main() {
-	bind_addr := os.Getenv("BIND_ADDR")
-	server_addr := os.Getenv("SERVER_ADDR")
+	listenOn := os.Getenv("ListenOn")
+	api := os.Getenv("Api")
 
-	if bind_addr == "" {
-		bind_addr = DefaultBindAddr
+	if listenOn == "" {
+		listenOn = DefaultListenOn
 	}
-	if server_addr == "" {
-		server_addr = DefaultServerAddr
+	if api == "" {
+		api = DefaultApi
 	}
 	db, err := gorm.Open(sqlite.Open("tunnel.db"), &gorm.Config{})
 	if err != nil {
 		panic("failed to connect database")
 	}
 	db.AutoMigrate(&model.Tunnel{})
-	lister, err := net.Listen("tcp", bind_addr)
+	lister, err := net.Listen("tcp", listenOn)
 	if err != nil {
 		panic(err)
 	}

@@ -12,8 +12,12 @@ type ClientConfig struct {
 }
 
 type ServerConfig struct {
-	TunnelAddr string `json:"tunnel_addr"` // 隧道地址
-	ServerAddr string `json:"server_addr"` // 服务器地址
+	Host     string `json:"host"`      // 服务器地址
+	ListenOn string `json:"listen_on"` // 监听地址 (默认 :5429)
+	Api      string `json:"api"`       // API地址 (默认 :8000)
+	Domain   string `json:"domain"`    // 域名 生成client token时使用
+	User     string `json:"user"`      // api 用户名
+	Password string `json:"password"`  // api 密码
 }
 
 func ParseFromEncoded(encoded string) (*ClientConfig, error) {

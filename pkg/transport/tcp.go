@@ -85,11 +85,6 @@ func (c *TcpClient) Close() error {
 	return c.conn.Close()
 }
 
-func (c *TcpClient) UpdateRoutes() error {
-	//todo: 发送消息到服务器，获取路由信息
-	return nil
-}
-
 func (c *TcpClient) RecieveData(m message.Message) error {
 	// todo: 转发数据到内网服务
 	// 获取route 通过route知道要转发什么类型到内网host
@@ -117,7 +112,7 @@ func NewTcpServer(conf *config.ServerConfig) *TcpServer {
 }
 
 func (s *TcpServer) Listen() error {
-	ln, err := net.Listen("tcp", s.conf.TunnelAddr)
+	ln, err := net.Listen("tcp", s.conf.ListenOn)
 	if err != nil {
 		return err
 	}
