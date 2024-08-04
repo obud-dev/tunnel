@@ -4,9 +4,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/obud-dev/tunnel/pkg/svc"
 )
 
-func ApiServer(ctx *ServerCtx) {
+func ApiServer(ctx *svc.ServerCtx) {
 	r := gin.Default()
 	r.Use(AuthMiddleware)
 
@@ -14,7 +15,7 @@ func ApiServer(ctx *ServerCtx) {
 		// tunnels := ctx.Db.GetTunnels()
 		// c.JSON(http.StatusOK, tunnels)
 	})
-	r.Run(ctx.Confif.Api)
+	r.Run(ctx.Config.Api)
 }
 
 func AuthMiddleware(c *gin.Context) {

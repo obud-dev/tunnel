@@ -1,4 +1,4 @@
-package main
+package svc
 
 import (
 	"net"
@@ -25,7 +25,7 @@ type Server interface {
 }
 
 type ServerCtx struct {
-	Confif      config.ServerConfig
+	Config      config.ServerConfig
 	TunnelModel model.TunnelModel
 	RouteModel  model.RouteModel
 	Routes      []model.Route        // 路由
@@ -34,13 +34,21 @@ type ServerCtx struct {
 }
 
 func NewServerCtx(config config.ServerConfig) *ServerCtx {
+
+	if config.ListenOn == "" {
+		config.ListenOn = DefaultListenOn
+	}
+	if config.Api == "" {
+		config.Api = DefaultApi
+	}
+
 	db, err := gorm.Open(sqlite.Open("tunnel.db"), &gorm.Config{})
 	if err != nil {
 		panic("failed to connect database")
 	}
 	db.AutoMigrate(&model.Tunnel{})
 	return &ServerCtx{
-		Confif:      config,
+		Config:      config,
 		TunnelModel: model.NewTunnelModel(db),
 		RouteModel:  model.NewRouteModel(db),
 		Routes:      []model.Route{},

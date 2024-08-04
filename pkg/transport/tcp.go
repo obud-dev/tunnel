@@ -9,6 +9,7 @@ import (
 	"github.com/obud-dev/tunnel/pkg/config"
 	"github.com/obud-dev/tunnel/pkg/message"
 	"github.com/obud-dev/tunnel/pkg/model"
+	"github.com/obud-dev/tunnel/pkg/svc"
 	"github.com/obud-dev/tunnel/pkg/utils"
 )
 
@@ -101,18 +102,18 @@ func (c *TcpClient) RecieveData(m message.Message) error {
 }
 
 type TcpServer struct {
-	conf     *config.ServerConfig // 服务器配置
+	ctx      *svc.ServerCtx
 	routes   []model.Route        // 路由
 	tunnels  map[string]*net.Conn // 隧道ID -> 隧道连接
 	messages map[string]*net.Conn // 消息ID -> 外部连接
 }
 
-func NewTcpServer(conf *config.ServerConfig) *TcpServer {
-	return &TcpServer{conf: conf}
+func NewTcpServer(ctx *svc.ServerCtx) *TcpServer {
+	return &TcpServer{ctx: ctx}
 }
 
 func (s *TcpServer) Listen() error {
-	ln, err := net.Listen("tcp", s.conf.ListenOn)
+	ln, err := net.Listen("tcp", s.ctx.Config.ListenOn)
 	if err != nil {
 		return err
 	}
