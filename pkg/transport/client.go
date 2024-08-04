@@ -2,7 +2,7 @@ package transport
 
 import "github.com/obud-dev/tunnel/pkg/message"
 
-type Client interface {
+type TransportClient interface {
 	Connect() error
 	Close() error
 	SendMessage(m message.Message) error

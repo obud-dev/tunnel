@@ -6,7 +6,7 @@ import (
 	"github.com/obud-dev/tunnel/pkg/message"
 )
 
-type Server interface {
+type TransportServer interface {
 	Listen() error
 	UpdateRoutes() error
 	HandleConnect(conn net.Conn, m message.Message) error
