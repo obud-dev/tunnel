@@ -55,7 +55,7 @@ func (m *defaultRouteModel) GetRoutes() ([]Route, error) {
 
 func (m *defaultRouteModel) GetRouteByID(id string) (*Route, error) {
 	var route Route
-	err := m.db.First(&route, id).Error
+	err := m.db.First(&route, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}

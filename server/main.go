@@ -28,9 +28,11 @@ func main() {
 	}
 
 	server = transport.NewTcpServer(svcCtx)
-	err := server.Listen()
-	if err != nil {
-		panic(err)
-	}
-	// ApiServer(svcCtx)
+	go func() {
+		err := server.Listen()
+		if err != nil {
+			panic(err)
+		}
+	}()
+	ApiServer(svcCtx)
 }

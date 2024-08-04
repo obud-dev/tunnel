@@ -41,7 +41,7 @@ func (m *defaultTunnelModel) GetTunnels() ([]Tunnel, error) {
 
 func (m *defaultTunnelModel) GetTunnelByID(id string) (*Tunnel, error) {
 	var tunnel Tunnel
-	err := m.db.First(&tunnel, "ID=?", id).Error
+	err := m.db.First(&tunnel, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
