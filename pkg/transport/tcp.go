@@ -117,6 +117,7 @@ func (s *TcpServer) Listen() error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("Listening on %s\n", s.ctx.Config.ListenOn)
 	for {
 		conn, err := ln.Accept()
 		if err != nil {

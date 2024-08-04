@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,7 @@ func ApiServer(ctx *svc.ServerCtx) {
 		// tunnels := ctx.Db.GetTunnels()
 		// c.JSON(http.StatusOK, tunnels)
 	})
+	fmt.Printf("API Server is running on %s\n\n", ctx.Config.Api)
 	r.Run(ctx.Config.Api)
 }
 
