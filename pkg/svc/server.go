@@ -17,7 +17,6 @@ const (
 
 type Server interface {
 	Listen() error
-	UpdateRoutes() error
 	HandleConnect(conn net.Conn, m message.Message) error
 	HandlePublicData(m message.Message) error
 	HandleData(m message.Message) error
@@ -28,9 +27,9 @@ type ServerCtx struct {
 	Config      config.ServerConfig
 	TunnelModel model.TunnelModel
 	RouteModel  model.RouteModel
-	Routes      []model.Route        // 路由
-	Tunnels     map[string]*net.Conn // 隧道ID -> 隧道连接
-	Messages    map[string]*net.Conn // 消息ID -> 外部连接
+	Routes      []model.Route       // 路由
+	Tunnels     map[string]net.Conn // 隧道ID -> 隧道连接
+	Messages    map[string]net.Conn // 消息ID -> 外部连接
 }
 
 func NewServerCtx(config config.ServerConfig) *ServerCtx {
@@ -52,7 +51,7 @@ func NewServerCtx(config config.ServerConfig) *ServerCtx {
 		TunnelModel: model.NewTunnelModel(db),
 		RouteModel:  model.NewRouteModel(db),
 		Routes:      []model.Route{},
-		Tunnels:     map[string]*net.Conn{},
-		Messages:    map[string]*net.Conn{},
+		Tunnels:     map[string]net.Conn{},
+		Messages:    map[string]net.Conn{},
 	}
 }

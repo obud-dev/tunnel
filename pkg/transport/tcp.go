@@ -3,10 +3,13 @@ package transport
 // 使用tcp协议进行通信
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 
 	"github.com/obud-dev/tunnel/pkg/config"
 	"github.com/obud-dev/tunnel/pkg/message"
@@ -45,12 +48,13 @@ func (c *TcpClient) Connect() error {
 	})
 
 	for {
-		// 读取数据
-		buf := make([]byte, 1024)
+		// 读取数据 buf 设置太小会d
+		buf := make([]byte, 2048)
 		n, err := c.conn.Read(buf)
 		if err != nil {
 			return err
 		}
+		fmt.Println("read data:", string(buf[:n]))
 		m, err := message.Unmarshal(buf[:n])
 		if err != nil {
 			return err
@@ -90,29 +94,76 @@ func (c *TcpClient) Close() error {
 func (c *TcpClient) RecieveData(m message.Message) error {
 	// todo: 转发数据到内网服务
 	// 获取route 通过route知道要转发什么类型到内网host
+	fmt.Println("client recieve data:", string(m.Data))
+	switch m.Protocol {
+	case model.TypeHttp:
+		// 转发http请求
+		reader := bufio.NewReader(bytes.NewReader(m.Data))
+		req, err := http.ReadRequest(reader)
+		if err != nil {
+			fmt.Println("read request error:", err)
+			return err
+		}
+		conn, err := net.Dial(req.RemoteAddr, req.URL.Port())
+		if err != nil {
+			return err
+		}
+		conn.Write(m.Data)
+
+		for {
+			buf := make([]byte, 2048)
+			n, err := conn.Read(buf)
+			if err != nil {
+				return err
+			}
+
+			c.SendMessage(message.Message{
+				Id:   m.Id,
+				Data: buf[:n],
+				Type: message.MessageTypeData,
+			})
+		}
+		// req.RequestURI = ""
+		// fmt.Println("host:", req.RequestURI)
+		// // 转发请求
+		// resp, err := http.DefaultClient.Do(req)
+		// if err != nil {
+		// 	fmt.Println("do request error:", err)
+		// 	return err
+		// }
+		// data, err := utils.ResponseToBytes(resp)
+		// if err != nil {
+		// 	fmt.Println("response to bytes error:", err)
+		// 	return err
+		// }
+		// // 返回数据
+		// c.SendMessage(message.Message{
+		// 	Type: message.MessageTypeData,
+		// 	Data: data,
+		// 	Id:   m.Id,
+		// })
+		// fmt.Println("send data to server")
+
+	default:
+	}
 
 	// 处理之后的数据返回给服务器
-	data := []byte(`处理之后的数据`)
-	c.SendMessage(message.Message{
-		Type: message.MessageTypeData,
-		Data: data,
-		Id:   m.Id,
-	})
+	// data := []byte(`处理之后的数据`)
+	// c.SendMessage(message.Message{
+	// 	Type: message.MessageTypeData,
+	// 	Data: data,
+	// 	Id:   m.Id,
+	// })
 
 	return nil
 }
 
 type TcpServer struct {
-	ctx      *svc.ServerCtx
-	routes   []model.Route        // 路由
-	tunnels  map[string]*net.Conn // 隧道ID -> 隧道连接
-	messages map[string]*net.Conn // 消息ID -> 外部连接
+	ctx *svc.ServerCtx
 }
 
 func NewTcpServer(ctx *svc.ServerCtx) *TcpServer {
-	tunnels := make(map[string]*net.Conn)
-	messages := make(map[string]*net.Conn)
-	return &TcpServer{ctx: ctx, tunnels: tunnels, messages: messages}
+	return &TcpServer{ctx: ctx}
 }
 
 func (s *TcpServer) Listen() error {
@@ -134,25 +185,43 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 	log.Println("Tunnel connection established with the client")
 	channel := make(chan []byte)
 	go func() {
-		buf := make([]byte, 1024)
-		n, err := conn.Read(buf)
-		if err != nil {
-			log.Printf("Tunnel connection error: %v\n", err)
-			return
+		for {
+			buf := make([]byte, 2048)
+			n, err := conn.Read(buf)
+			if err != nil {
+				log.Printf("Tunnel connection error: %v\n", err)
+				return
+			}
+			log.Printf("Received data on tunnel: %s\n", string(buf[:n]))
+			channel <- buf[:n]
 		}
-		log.Printf("Received data on tunnel: %s\n", string(buf[:n]))
-		channel <- buf[:n]
 	}()
 	message_response := &message.Message{}
 	message_response.Id = utils.GenerateID()
 	message_response.Type = message.MessageTypeDisconnect
 	message_response.Data = []byte("connect error")
 	if channel != nil {
-		message_str := <-channel
-		message_request, err := message.Unmarshal(message_str)
-		if err != nil {
-			log.Println("error unmarshal request message:", err)
-			message_response.Data = []byte("data parse failed")
+		messageStr := <-channel
+		message_request, errx := message.Unmarshal(messageStr)
+		if errx != nil {
+			log.Println("error unmarshal request message:", errx)
+			// 从外部接收到的数据，转发到内部
+			fmt.Println("data:", string(messageStr))
+			messageId := utils.GenerateID()
+			s.ctx.Messages[messageId] = conn
+			err := s.HandlePublicData(message.Message{
+				Type:     message.MessageTypeData,
+				Data:     messageStr,
+				Id:       messageId,
+				Protocol: model.TypeHttp,
+			})
+			if err != nil {
+				fmt.Println("handle public data error:", err)
+				s.ctx.Messages[messageId].Close()
+				delete(s.ctx.Messages, messageId)
+			}
+
+			// message_response.Data = []byte("data parse failed")
 		} else {
 			switch message_request.Type {
 			case message.MessageTypeConnect:
@@ -174,7 +243,7 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 							log.Println("tunnel json marshal failed")
 						} else {
 							message_response.Data = []byte(string(tunnel_json))
-							s.tunnels[tunnel.ID] = &conn
+							s.ctx.Tunnels[tunnel.ID] = conn
 						}
 					}
 				}
@@ -185,6 +254,7 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 				if message_response.Type == message.MessageTypeDisconnect {
 					conn.Close()
 				}
+				fmt.Println("connected")
 				// case message.MessageTypeData:
 				// 	fmt.Println("data:", string(m.Data))
 				// case message.MessageTypeRouteUpdate:
@@ -201,19 +271,13 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 	}
 }
 
-func (s *TcpServer) UpdateRoutes() error {
-	// todo: 更新路由
-	s.routes = []model.Route{}
-	return nil
-}
-
 func (s *TcpServer) HandleConnect(conn net.Conn, m message.Message) error {
 	conf, err := config.ParseFromEncoded(string(m.Data))
 	if err != nil {
 		return err
 	}
 	// todo: 校验token
-	s.tunnels[conf.TunnelID] = &conn
+	s.ctx.Tunnels[conf.TunnelID] = conn
 	return nil
 }
 
@@ -224,18 +288,29 @@ func (s *TcpServer) SendMessage(m message.Message) error {
 func (s *TcpServer) HandlePublicData(m message.Message) error {
 	// todo: 消息规则知道转发到哪个隧道
 	// 通过隧道ID获取隧道连接
-	// tunnelID := ""
-	// conn := *s.tunnels[tunnelID]
-	// // todo: 处理消息 把消息host 转换为规则host
-	// data := []byte(`处理之后的数据`)
+	tunnelID := "ccf7258f-0e41-4e80-a4ea-18ed8195b98e"
+	if _, ok := s.ctx.Tunnels[tunnelID]; !ok {
+		return fmt.Errorf("tunnel not found")
+	}
+	conn := s.ctx.Tunnels[tunnelID]
+	// todo: 处理消息 把消息host 转换为规则host
+	reader := bufio.NewReader(bytes.NewReader(m.Data))
+	req, err := http.ReadRequest(reader)
+	if err != nil {
+		fmt.Println("read request error:", err)
+		return err
+	}
+	req.Host = "0.0.0.0:8080"
+	// data := []byte("处理后的数据")
 	// m.Data = data
-	// // 发送消息
-	// mData, err := m.Marshal()
-	// if err != nil {
-	// 	return err
-	// }
-	// conn.Write(mData)
-	// return err
+	// 发送消息
+	mData, err := m.Marshal()
+	if err != nil {
+		fmt.Println("marshal message error:", err)
+		return err
+	}
+	conn.Write(mData)
+	fmt.Println("send data to tunnel")
 	return nil
 }
 
