@@ -1,6 +1,10 @@
 package message
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/obud-dev/tunnel/pkg/model"
+)
 
 type MessageType int
 
@@ -9,14 +13,13 @@ const (
 	MessageTypeConnect
 	MessageTypeDisconnect
 	MessageTypeHeartbeat
-	MessageTypeRouteUpdate
 )
 
 type Message struct {
-	Type    MessageType `json:"type"`
-	Data    []byte      `json:"data"`
-	RouteID string      `json:"route_id"`
-	Id      string      `json:"id"`
+	Type     MessageType    `json:"type"`
+	Data     []byte         `json:"data"`
+	Id       string         `json:"id"`
+	Protocol model.Protocol `json:"protocol"`
 }
 
 func (m *Message) Marshal() ([]byte, error) {

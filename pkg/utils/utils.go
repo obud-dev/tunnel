@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+
+	"github.com/google/uuid"
 )
 
 func GetAvailablePort(min int) (int, error) {
@@ -16,4 +18,9 @@ func GetAvailablePort(min int) (int, error) {
 		}
 	}
 	return 0, errors.New("no available port")
+}
+
+func GenerateID() string {
+	// 生成一个随机ID
+	return uuid.New().String()
 }
