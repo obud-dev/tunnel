@@ -1,5 +1,7 @@
 package model
 
+import "gorm.io/gorm"
+
 type Tunnel struct {
 	ID     string `gorm:"primaryKey"`
 	Name   string `gorm:"unique"`
@@ -10,4 +12,50 @@ type Tunnel struct {
 
 func (t *Tunnel) TableName() string {
 	return "tunnels"
+}
+
+type defaultTunnelModel struct {
+	db *gorm.DB
+}
+
+type TunnelModel interface {
+	GetTunnels() ([]Tunnel, error)
+	GetTunnelByID(id string) (*Tunnel, error)
+	Insert(tunnel *Tunnel) error
+	Update(tunnel *Tunnel) error
+	Delete(tunnel *Tunnel) error
+}
+
+func NewTunnelModel(db *gorm.DB) *defaultTunnelModel {
+	return &defaultTunnelModel{db: db}
+}
+
+func (m *defaultTunnelModel) GetTunnels() ([]Tunnel, error) {
+	var tunnels []Tunnel
+	err := m.db.Find(&tunnels).Error
+	if err != nil {
+		return nil, err
+	}
+	return tunnels, nil
+}
+
+func (m *defaultTunnelModel) GetTunnelByID(id string) (*Tunnel, error) {
+	var tunnel Tunnel
+	err := m.db.First(&tunnel, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &tunnel, nil
+}
+
+func (m *defaultTunnelModel) Insert(tunnel *Tunnel) error {
+	return m.db.Create(tunnel).Error
+}
+
+func (m *defaultTunnelModel) Update(tunnel *Tunnel) error {
+	return m.db.Save(tunnel).Error
+}
+
+func (m *defaultTunnelModel) Delete(tunnel *Tunnel) error {
+	return m.db.Delete(tunnel).Error
 }

@@ -14,7 +14,7 @@ func ApiServer(ctx *ServerCtx) {
 		// tunnels := ctx.Db.GetTunnels()
 		// c.JSON(http.StatusOK, tunnels)
 	})
-	r.Run()
+	r.Run(ctx.Confif.Api)
 }
 
 func AuthMiddleware(c *gin.Context) {
