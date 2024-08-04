@@ -196,13 +196,13 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 			channel <- buf[:n]
 		}
 	}()
-	message_response := &message.Message{}
-	message_response.Id = utils.GenerateID()
-	message_response.Type = message.MessageTypeDisconnect
-	message_response.Data = []byte("connect error")
+	response := &message.Message{}
+	response.Id = utils.GenerateID()
+	response.Type = message.MessageTypeDisconnect
+	response.Data = []byte("connect error")
 	if channel != nil {
 		messageStr := <-channel
-		message_request, errx := message.Unmarshal(messageStr)
+		request, errx := message.Unmarshal(messageStr)
 		if errx != nil {
 			log.Println("error unmarshal request message:", errx)
 			// 从外部接收到的数据，转发到内部
@@ -223,10 +223,10 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 
 			// message_response.Data = []byte("data parse failed")
 		} else {
-			switch message_request.Type {
+			switch request.Type {
 			case message.MessageTypeConnect:
-				log.Println("token:", string(message_request.Data))
-				token_request, err := config.ParseFromEncoded(string(message_request.Data))
+				log.Println("token:", string(request.Data))
+				token_request, err := config.ParseFromEncoded(string(request.Data))
 				if err != nil {
 					log.Println("error parse connect token:", err)
 				} else {
@@ -234,24 +234,24 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 					tunnel, err := s.ctx.TunnelModel.GetTunnelByID(token_request.TunnelID)
 					if err != nil {
 						log.Println("tunnel not found")
-						message_response.Data = []byte("tunnel not found in server")
+						response.Data = []byte("tunnel not found in server")
 					} else {
 						tunnel.Status = "online"
-						message_response.Type = message.MessageTypeConnect
+						response.Type = message.MessageTypeConnect
 						tunnel_json, err := json.Marshal(tunnel)
 						if err != nil {
 							log.Println("tunnel json marshal failed")
 						} else {
-							message_response.Data = []byte(string(tunnel_json))
+							response.Data = []byte(string(tunnel_json))
 							s.ctx.Tunnels[tunnel.ID] = conn
 						}
 					}
 				}
 				// 写回数据
-				message_byte, _ := message_response.Marshal()
+				message_byte, _ := response.Marshal()
 				conn.Write(message_byte)
 				// 验证失败，关闭连接
-				if message_response.Type == message.MessageTypeDisconnect {
+				if response.Type == message.MessageTypeDisconnect {
 					conn.Close()
 				}
 				fmt.Println("connected")
