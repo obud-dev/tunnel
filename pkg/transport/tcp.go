@@ -3,7 +3,9 @@ package transport
 // 使用tcp协议进行通信
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 
 	"github.com/obud-dev/tunnel/pkg/config"
@@ -34,14 +36,13 @@ func (c *TcpClient) Connect() error {
 	if err != nil {
 		return err
 	}
+	c.conn = conn
 	// 发送连接消息
 	data, _ := c.conf.Encode()
 	c.SendMessage(message.Message{
 		Type: message.MessageTypeConnect,
 		Data: []byte(data),
 	})
-
-	c.conn = conn
 
 	for {
 		// 读取数据
@@ -109,7 +110,9 @@ type TcpServer struct {
 }
 
 func NewTcpServer(ctx *svc.ServerCtx) *TcpServer {
-	return &TcpServer{ctx: ctx}
+	tunnels := make(map[string]*net.Conn)
+	messages := make(map[string]*net.Conn)
+	return &TcpServer{ctx: ctx, tunnels: tunnels, messages: messages}
 }
 
 func (s *TcpServer) Listen() error {
@@ -127,40 +130,72 @@ func (s *TcpServer) Listen() error {
 }
 
 func (s *TcpServer) handleConn(conn net.Conn) {
-	for {
+	log.Println("Tunnel connection established with the client")
+	channel := make(chan []byte)
+	go func() {
 		buf := make([]byte, 1024)
 		n, err := conn.Read(buf)
 		if err != nil {
+			log.Printf("Tunnel connection error: %v\n", err)
 			return
 		}
-		m, err := message.Unmarshal(buf[:n])
+		log.Printf("Received data on tunnel: %s\n", string(buf[:n]))
+		channel <- buf[:n]
+	}()
+	message_response := &message.Message{}
+	message_response.Id = utils.GenerateID()
+	message_response.Type = message.MessageTypeDisconnect
+	message_response.Data = []byte("connect error")
+	if channel != nil {
+		message_str := <-channel
+		message_request, err := message.Unmarshal(message_str)
 		if err != nil {
-			// 从外部接收到的数据，转发到内部
-			messageId := utils.GenerateID()
-			s.messages[messageId] = &conn
-			s.SendMessage(message.Message{
-				Type: message.MessageTypeData,
-				Data: buf[:n],
-				Id:   messageId,
-			})
-			return
-		}
-		// 处理消息
-		switch m.Type {
-		case message.MessageTypeData:
-			fmt.Println("data:", string(m.Data))
-		// case message.MessageTypeRouteUpdate:
-		// 	fmt.Println("route update")
-		case message.MessageTypeConnect:
-			// todo: 处理连接消息， 校验token
-			// 安装，如果隧道ID已经存在，关闭之前的连接
-			fmt.Println("connected")
-		case message.MessageTypeDisconnect:
-			fmt.Println("disconnected")
-		case message.MessageTypeHeartbeat:
-			fmt.Println("heartbeat")
-		default:
-			fmt.Println("unknown message type")
+			log.Println("error unmarshal request message:", err)
+			message_response.Data = []byte("data parse failed")
+		} else {
+			switch message_request.Type {
+			case message.MessageTypeConnect:
+				log.Println("token:", string(message_request.Data))
+				token_request, err := config.ParseFromEncoded(string(message_request.Data))
+				if err != nil {
+					log.Println("error parse connect token:", err)
+				} else {
+					// 从数据库中查找tunnel_id对应的记录
+					tunnel, err := s.ctx.TunnelModel.GetTunnelByID(token_request.TunnelID)
+					if err != nil {
+						log.Println("tunnel not found")
+						message_response.Data = []byte("tunnel not found in server")
+					} else {
+						tunnel.Status = "online"
+						message_response.Type = message.MessageTypeConnect
+						tunnel_json, err := json.Marshal(tunnel)
+						if err != nil {
+							log.Println("tunnel json marshal failed")
+						} else {
+							message_response.Data = []byte(string(tunnel_json))
+							s.tunnels[tunnel.ID] = &conn
+						}
+					}
+				}
+				// 写回数据
+				message_byte, _ := message_response.Marshal()
+				conn.Write(message_byte)
+				// 验证失败，关闭连接
+				if message_response.Type == message.MessageTypeDisconnect {
+					conn.Close()
+				}
+				// case message.MessageTypeData:
+				// 	fmt.Println("data:", string(m.Data))
+				// case message.MessageTypeRouteUpdate:
+				// 	fmt.Println("route update")
+				// fmt.Println("connected")
+			case message.MessageTypeDisconnect:
+				fmt.Println("disconnected")
+			case message.MessageTypeHeartbeat:
+				fmt.Println("heartbeat")
+			default:
+				fmt.Println("unknown message type")
+			}
 		}
 	}
 }
