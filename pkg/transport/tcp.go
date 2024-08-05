@@ -210,10 +210,10 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 			messageId := utils.GenerateID()
 			s.ctx.Messages[messageId] = conn
 			err := s.HandlePublicData(message.Message{
-				Type:     message.MessageTypeData,
-				Data:     messageStr,
-				Id:       messageId,
-				Protocol: model.TypeHttp,
+				Type: message.MessageTypeData,
+				Data: messageStr,
+				Id:   messageId,
+				// Protocol: model.TypeHttp,
 			})
 			if err != nil {
 				fmt.Println("handle public data error:", err)
@@ -257,9 +257,6 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 				fmt.Println("connected")
 				// case message.MessageTypeData:
 				// 	fmt.Println("data:", string(m.Data))
-				// case message.MessageTypeRouteUpdate:
-				// 	fmt.Println("route update")
-				// fmt.Println("connected")
 			case message.MessageTypeDisconnect:
 				fmt.Println("disconnected")
 			case message.MessageTypeHeartbeat:
@@ -288,21 +285,21 @@ func (s *TcpServer) SendMessage(m message.Message) error {
 func (s *TcpServer) HandlePublicData(m message.Message) error {
 	// todo: 消息规则知道转发到哪个隧道
 	// 通过隧道ID获取隧道连接
+	if utils.HttpPattern.Match(m.Data) {
+		m.Protocol = model.TypeHttp
+		// todo: 处理消息 把消息host 转换为规则host
+
+	}
+	if utils.SshPattern.Match(m.Data) {
+		m.Protocol = model.TypeSsh
+	}
+
 	tunnelID := "ccf7258f-0e41-4e80-a4ea-18ed8195b98e"
 	if _, ok := s.ctx.Tunnels[tunnelID]; !ok {
 		return fmt.Errorf("tunnel not found")
 	}
 	conn := s.ctx.Tunnels[tunnelID]
-	// todo: 处理消息 把消息host 转换为规则host
-	reader := bufio.NewReader(bytes.NewReader(m.Data))
-	req, err := http.ReadRequest(reader)
-	if err != nil {
-		fmt.Println("read request error:", err)
-		return err
-	}
-	req.Host = "0.0.0.0:8080"
-	// data := []byte("处理后的数据")
-	// m.Data = data
+
 	// 发送消息
 	mData, err := m.Marshal()
 	if err != nil {
