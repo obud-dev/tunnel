@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -92,8 +93,7 @@ func (c *TcpClient) Close() error {
 }
 
 func (c *TcpClient) RecieveData(m message.Message) error {
-	// todo: 转发数据到内网服务
-	// 获取route 通过route知道要转发什么类型到内网host
+	// 转发数据到内网服务
 	fmt.Println("client recieve data:", string(m.Data))
 	switch m.Protocol {
 	case model.TypeHttp:
@@ -104,11 +104,22 @@ func (c *TcpClient) RecieveData(m message.Message) error {
 			fmt.Println("read request error:", err)
 			return err
 		}
-		conn, err := net.Dial("tcp", req.Host)
+		// todo: 客户端获取的routes
+		routes := []model.Route{}
+		target := "0.0.0:8080"
+		// 通过m.RouteID获取Target,然后传输到Target
+		for _, route := range routes {
+			if route.ID == m.RouteID {
+				target = route.Target
+				break
+			}
+		}
+		conn, err := net.Dial("tcp", target)
 		if err != nil {
 			return err
 		}
-		conn.Write(m.Data)
+		// 发送http请求
+		req.Write(conn)
 
 		for {
 			buf := make([]byte, 2048)
@@ -116,7 +127,7 @@ func (c *TcpClient) RecieveData(m message.Message) error {
 			if err != nil {
 				return err
 			}
-
+			// 通过tunnel发送本地响应到服务器
 			c.SendMessage(message.Message{
 				Id:   m.Id,
 				Data: buf[:n],
@@ -152,85 +163,83 @@ func (s *TcpServer) Listen() error {
 
 func (s *TcpServer) handleConn(conn net.Conn) {
 	log.Println("Tunnel connection established with the client")
+	reader := bufio.NewReader(conn)
 	for {
-		channel := make(chan []byte)
-		go func() {
-			defer close(channel)
-			buf := make([]byte, 2048)
-			n, err := conn.Read(buf)
-			if err != nil {
-				log.Printf("Tunnel connection error: %v\n", err)
-				return
+		buf := make([]byte, 2048)
+		n, err := reader.Read(buf)
+		messageStr := buf[:n]
+		if err != nil {
+			if err == io.EOF {
+				break
 			}
-			log.Printf("Received data on tunnel: %s\n", string(buf[:n]))
-			channel <- buf[:n]
-		}()
+			log.Fatalln("Tunnel connect error: ", err)
+		}
+		log.Printf("Received data on tunnel: %s\n", string(messageStr))
+
 		response := &message.Message{}
 		response.Id = utils.GenerateID()
 		response.Type = message.MessageTypeDisconnect
 		response.Data = []byte("connect error")
-		if channel != nil {
-			messageStr := <-channel
-			request, errx := message.Unmarshal(messageStr)
-			if errx != nil {
-				// 从外部接收到的数据，转发到内部
-				messageId := utils.GenerateID()
-				s.ctx.Messages[messageId] = conn
-				err := s.HandlePublicData(message.Message{
-					Type:     message.MessageTypeData,
-					Data:     messageStr,
-					Id:       messageId,
-					Protocol: model.TypeHttp,
-				})
+
+		request, errx := message.Unmarshal(messageStr)
+		if errx != nil {
+			// 从外部接收到的数据，转发到内部
+			messageId := utils.GenerateID()
+			s.ctx.Messages[messageId] = conn
+			err := s.HandlePublicData(message.Message{
+				Type:     message.MessageTypeData,
+				Data:     messageStr,
+				Id:       messageId,
+				Protocol: model.TypeHttp,
+			})
+			if err != nil {
+				fmt.Println("handle public data error:", err)
+				s.ctx.Messages[messageId].Close()
+				delete(s.ctx.Messages, messageId)
+			}
+		} else {
+			switch request.Type {
+			case message.MessageTypeConnect:
+				log.Println("token:", string(request.Data))
+				token_request, err := config.ParseFromEncoded(string(request.Data))
 				if err != nil {
-					fmt.Println("handle public data error:", err)
-					s.ctx.Messages[messageId].Close()
-					delete(s.ctx.Messages, messageId)
-				}
-			} else {
-				switch request.Type {
-				case message.MessageTypeConnect:
-					log.Println("token:", string(request.Data))
-					token_request, err := config.ParseFromEncoded(string(request.Data))
+					log.Println("error parse connect token:", err)
+				} else {
+					// 从数据库中查找tunnel_id对应的记录
+					tunnel, err := s.ctx.TunnelModel.GetTunnelByID(token_request.TunnelID)
 					if err != nil {
-						log.Println("error parse connect token:", err)
+						log.Println("tunnel not found")
+						response.Data = []byte("tunnel not found on server")
 					} else {
-						// 从数据库中查找tunnel_id对应的记录
-						tunnel, err := s.ctx.TunnelModel.GetTunnelByID(token_request.TunnelID)
+						tunnel.Status = "online"
+						response.Type = message.MessageTypeConnect
+						tunnel_json, err := json.Marshal(tunnel)
 						if err != nil {
-							log.Println("tunnel not found")
-							response.Data = []byte("tunnel not found on server")
+							log.Println("tunnel json marshal failed")
 						} else {
-							tunnel.Status = "online"
-							response.Type = message.MessageTypeConnect
-							tunnel_json, err := json.Marshal(tunnel)
-							if err != nil {
-								log.Println("tunnel json marshal failed")
-							} else {
-								response.Data = []byte(string(tunnel_json))
-								s.ctx.Tunnels[tunnel.ID] = conn
-							}
+							response.Data = []byte(string(tunnel_json))
+							s.ctx.Tunnels[tunnel.ID] = conn
 						}
 					}
-					// 写回数据
-					message_byte, _ := response.Marshal()
-					conn.Write(message_byte)
-					// 验证失败，关闭连接
-					if response.Type == message.MessageTypeDisconnect {
-						conn.Close()
-					}
-					fmt.Println("connected")
-				case message.MessageTypeData:
-					if _, ok := s.ctx.Messages[request.Id]; ok {
-						s.ctx.Messages[request.Id].Write(request.Data)
-					}
-				case message.MessageTypeDisconnect:
-					fmt.Println("disconnected")
-				case message.MessageTypeHeartbeat:
-					fmt.Println("heartbeat")
-				default:
-					fmt.Println("unknown message type")
 				}
+				// 写回数据
+				message_byte, _ := response.Marshal()
+				conn.Write(message_byte)
+				// 验证失败，关闭连接
+				if response.Type == message.MessageTypeDisconnect {
+					conn.Close()
+				}
+				fmt.Println("connected")
+			case message.MessageTypeData:
+				if _, ok := s.ctx.Messages[request.Id]; ok {
+					s.ctx.Messages[request.Id].Write(request.Data)
+				}
+			case message.MessageTypeDisconnect:
+				fmt.Println("disconnected")
+			case message.MessageTypeHeartbeat:
+				fmt.Println("heartbeat")
+			default:
+				fmt.Println("unknown message type")
 			}
 		}
 	}
@@ -257,11 +266,12 @@ func (s *TcpServer) HandlePublicData(m message.Message) error {
 	if utils.HttpPattern.Match(m.Data) {
 		// todo: 处理消息 把消息host 转换为规则host
 		// host := GetHostFromHttpMessage(m.Data)
-		host := ""
+		host := "localhost"
 		for _, route := range s.ctx.Routes {
 			if route.Hostname == host {
 				m.Protocol = route.Protocol
 				tunnelID = route.TunnelID
+				m.RouteID = route.ID
 				break
 			}
 		}

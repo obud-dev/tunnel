@@ -46,6 +46,7 @@ func NewServerCtx(config config.ServerConfig) *ServerCtx {
 		panic("failed to connect database")
 	}
 	db.AutoMigrate(&model.Tunnel{})
+	db.AutoMigrate(&model.Route{})
 	tunnelModel := model.NewTunnelModel(db)
 	routeModel := model.NewRouteModel(db)
 
