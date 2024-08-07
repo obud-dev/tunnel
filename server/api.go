@@ -12,14 +12,15 @@ import (
 
 func ApiServer(ctx *svc.ServerCtx) {
 	r := gin.Default()
-	r.Use(AuthMiddleware)
+	r.Use(AuthMiddleware(ctx))
 
-	r.GET("/tunnels", func(c *gin.Context) {
+	api := r.Group("/api")
+	api.GET("/tunnels", func(c *gin.Context) {
 		tunnels, err := ctx.TunnelModel.GetTunnels()
 		response.Response(c, tunnels, err)
 	})
 
-	r.POST("/tunnels", func(c *gin.Context) {
+	api.POST("/tunnels", func(c *gin.Context) {
 		var tunnel model.Tunnel
 		if err := c.BindJSON(&tunnel); err != nil {
 			response.Response(c, nil, response.New(-1, err.Error()))
@@ -29,13 +30,13 @@ func ApiServer(ctx *svc.ServerCtx) {
 		response.Response(c, nil, err)
 	})
 
-	r.GET("/tunnels/:id", func(c *gin.Context) {
+	api.GET("/tunnels/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		tunnel, err := ctx.TunnelModel.GetTunnelByID(id)
 		response.Response(c, tunnel, err)
 	})
 
-	r.PUT("/tunnels/:id", func(c *gin.Context) {
+	api.PUT("/tunnels/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		var tunnel model.Tunnel
 		if err := c.BindJSON(&tunnel); err != nil {
@@ -47,7 +48,7 @@ func ApiServer(ctx *svc.ServerCtx) {
 		response.Response(c, nil, err)
 	})
 
-	r.DELETE("/tunnels/:id", func(c *gin.Context) {
+	api.DELETE("/tunnels/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		tunnel, err := ctx.TunnelModel.GetTunnelByID(id)
 		if err != nil {
@@ -62,23 +63,23 @@ func ApiServer(ctx *svc.ServerCtx) {
 	r.Run(ctx.Config.Api)
 }
 
-func AuthMiddleware(c *gin.Context) {
-	// 从请求中获取 basic auth
-	username, password, ok := c.Request.BasicAuth()
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"message": "Unauthorized",
-		})
-		c.Abort()
-		return
+func AuthMiddleware(ctx *svc.ServerCtx) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 从请求中获取 basic auth
+		username, password, ok := c.Request.BasicAuth()
+		if !ok {
+			c.Header("WWW-Authenticate", "Basic realm=Authorization Required")
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		// 验证 basic auth
+		if username != ctx.Config.User || password != ctx.Config.Password {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"message": "Unauthorized",
+			})
+			c.Abort()
+			return
+		}
+		c.Next()
 	}
-	// 验证 basic auth
-	if username != "admin" || password != "admin" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"message": "Unauthorized",
-		})
-		c.Abort()
-		return
-	}
-	c.Next()
 }

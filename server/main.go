@@ -18,6 +18,8 @@ func main() {
 	svcCtx := svc.NewServerCtx(config.ServerConfig{
 		ListenOn: listenOn,
 		Api:      api,
+		User:     "admin",
+		Password: "123456",
 	})
 
 	// 插入测试数据tunnel
