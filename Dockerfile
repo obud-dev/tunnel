@@ -16,15 +16,18 @@ RUN npm install && npm run build
 # 使用 Go 进行后端构建
 FROM golang:alpine AS golang-build
 
-WORKDIR /app/server
+# 复制 go.mod 和 go.sum 并安装依赖
+COPY ./go.mod ./go.sum ./
+RUN go mod download
 
-# 复制 server 目录到工作目录
-COPY ./server /app/server
+# 复制整个 server 目录到工作目录
+COPY ./server ./server
 
 # 复制从前一阶段构建的 React 项目的 dist 目录到 Go 项目
-COPY --from=react-build /app/dist /app/server/dist
+COPY --from=react-build /app/dist ./server/dist
 
-# 打包 Go 项目
+# 进入 server 目录并打包 Go 项目
+WORKDIR /app/server
 RUN go build -o server .
 
 # 最后的镜像基于alpin容器
