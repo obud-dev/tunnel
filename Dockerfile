@@ -3,7 +3,7 @@
 # 3、在server目录打包golang项目，输出server文件
 
 # 使用 Node.js 进行 React 项目构建
-FROM node:20.16.0 as react-build
+FROM node:20.16.0 AS react-build
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ COPY ./web /app
 RUN npm install && npm run build
 
 # 使用 Go 进行后端构建
-FROM golang:alpine as golang-build
+FROM golang:alpine AS golang-build
 
 WORKDIR /app/server
 
