@@ -20,7 +20,7 @@ type Message struct {
 	Data     []byte         `json:"data"`
 	Id       string         `json:"id"`
 	Protocol model.Protocol `json:"protocol"`
-	RouteID  string         `json:"routeId"`
+	Target   string         `json:"target"`
 }
 
 func (m *Message) Marshal() ([]byte, error) {

@@ -40,6 +40,14 @@ func NewServerCtx(config config.ServerConfig) *ServerCtx {
 	if config.Api == "" {
 		config.Api = DefaultApi
 	}
+	if config.User == "" {
+		config.User = "admin"
+	}
+
+	if config.Password == "" {
+		// panic("password is required")
+		config.Password = "123456"
+	}
 
 	db, err := gorm.Open(sqlite.Open("tunnel.db"), &gorm.Config{})
 	if err != nil {

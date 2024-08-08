@@ -104,17 +104,9 @@ func (c *TcpClient) RecieveData(m message.Message) error {
 			fmt.Println("read request error:", err)
 			return err
 		}
-		// todo: 客户端获取的routes
-		routes := []model.Route{}
-		target := "0.0.0:8080"
-		// 通过m.RouteID获取Target,然后传输到Target
-		for _, route := range routes {
-			if route.ID == m.RouteID {
-				target = route.Target
-				break
-			}
-		}
-		conn, err := net.Dial("tcp", target)
+
+		fmt.Println("target:", m.Target)
+		conn, err := net.Dial("tcp", m.Target)
 		if err != nil {
 			return err
 		}
@@ -127,6 +119,7 @@ func (c *TcpClient) RecieveData(m message.Message) error {
 			if err != nil {
 				return err
 			}
+			fmt.Println("read response:", string(buf[:n]))
 			// 通过tunnel发送本地响应到服务器
 			c.SendMessage(message.Message{
 				Id:   m.Id,
@@ -213,11 +206,11 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 					} else {
 						tunnel.Status = "online"
 						response.Type = message.MessageTypeConnect
-						tunnel_json, err := json.Marshal(tunnel)
+						tunnelJson, err := json.Marshal(tunnel)
 						if err != nil {
 							log.Println("tunnel json marshal failed")
 						} else {
-							response.Data = []byte(string(tunnel_json))
+							response.Data = []byte(string(tunnelJson))
 							s.ctx.Tunnels[tunnel.ID] = conn
 						}
 					}
@@ -260,33 +253,35 @@ func (s *TcpServer) SendMessage(m message.Message) error {
 }
 
 func (s *TcpServer) HandlePublicData(m message.Message) error {
-	tunnelID := "ccf7258f-0e41-4e80-a4ea-18ed8195b98e"
-	// todo: 消息规则知道转发到哪个隧道
-	// 通过隧道ID获取隧道连接
+	tunnelID := ""
 	if utils.HttpPattern.Match(m.Data) {
-		// todo: 处理消息 把消息host 转换为规则host
-		// host := GetHostFromHttpMessage(m.Data)
-		host := "localhost"
+		// 处理消息 把消息host 转换为规则host
+		reader := bufio.NewReader(bytes.NewReader(m.Data))
+		req, err := http.ReadRequest(reader)
+		if err != nil {
+			return err
+		}
+		host := req.Host
 		for _, route := range s.ctx.Routes {
 			if route.Hostname == host {
 				m.Protocol = route.Protocol
 				tunnelID = route.TunnelID
-				m.RouteID = route.ID
+				m.Target = route.Target
 				break
 			}
 		}
-
 	}
+
 	if utils.SshPattern.Match(m.Data) {
 		m.Protocol = model.TypeSsh
 	}
 
+	// 通过隧道ID获取隧道连接
 	if _, ok := s.ctx.Tunnels[tunnelID]; !ok {
 		return fmt.Errorf("tunnel not found")
 	}
 
 	conn := s.ctx.Tunnels[tunnelID]
-
 	mData, err := m.Marshal()
 	if err != nil {
 		fmt.Println("marshal message error:", err)

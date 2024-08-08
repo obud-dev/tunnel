@@ -13,13 +13,15 @@ import (
 func main() {
 	listenOn := os.Getenv("ListenOn")
 	api := os.Getenv("Api")
+	user := os.Getenv("User")
+	password := os.Getenv("Password")
 
 	var server svc.Server
 	svcCtx := svc.NewServerCtx(config.ServerConfig{
 		ListenOn: listenOn,
 		Api:      api,
-		User:     "admin",
-		Password: "123456",
+		User:     user,
+		Password: password,
 	})
 
 	// 插入测试数据tunnel
@@ -32,21 +34,20 @@ func main() {
 	route := &model.Route{
 		ID:       "1234-5678-abcd-ef",
 		TunnelID: "ccf7258f-0e41-4e80-a4ea-18ed8195b98e",
-		Hostname: "localhost",
-		Target:   "http://0.0.0.0:8080",
+		Hostname: "localhost:5429",
+		Prefix:   "/example",
+		Target:   "0.0.0.0:8080",
 		Protocol: model.TypeHttp,
 	}
-	_, er := svcCtx.RouteModel.GetRouteByID(route.ID)
-	if er != nil {
-		svcCtx.RouteModel.Update(route)
-	}
+
+	svcCtx.RouteModel.Update(route)
 
 	server = transport.NewTcpServer(svcCtx)
 	go func() {
-		err := server.Listen()
-		if err != nil {
-			panic(err)
-		}
+		server.Listen()
+		// if err != nil {
+		// 	panic(err)
+		// }
 	}()
 	ApiServer(svcCtx)
 }
