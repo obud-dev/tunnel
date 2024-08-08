@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/obud-dev/tunnel/pkg/config"
 	"github.com/obud-dev/tunnel/pkg/message"
@@ -53,7 +54,10 @@ func (c *TcpClient) Connect() error {
 		buf := make([]byte, 2048)
 		n, err := c.conn.Read(buf)
 		if err != nil {
-			return err
+			err := c.ReconnectToServer()
+			if err != nil {
+				log.Fatalln(err)
+			}
 		}
 		fmt.Println("read data:", string(buf[:n]))
 		m, err := message.Unmarshal(buf[:n])
@@ -62,17 +66,17 @@ func (c *TcpClient) Connect() error {
 		}
 		switch m.Type {
 		case message.MessageTypeData:
-			fmt.Println("data:", string(m.Data))
 			go c.RecieveData(*m)
 		// case message.MessageTypeRouteUpdate:
 		// 	fmt.Println("route update")
 		// 	c.UpdateRoutes()
 		case message.MessageTypeConnect:
 			fmt.Println("connected")
+			go c.Heartbeat()
 		case message.MessageTypeDisconnect:
 			fmt.Println("disconnected")
 		case message.MessageTypeHeartbeat:
-			fmt.Println("heartbeat")
+			log.Println("Received heartbeat:", string(m.Data))
 		default:
 			fmt.Println("unknown message type")
 		}
@@ -101,39 +105,25 @@ func (c *TcpClient) RecieveData(m message.Message) error {
 		reader := bufio.NewReader(bytes.NewReader(m.Data))
 		req, err := http.ReadRequest(reader)
 		if err != nil {
-			fmt.Println("read request error:", err)
 			return err
 		}
-		// todo: 客户端获取的routes
-		routes := []model.Route{}
-		target := "0.0.0:8080"
-		// 通过m.RouteID获取Target,然后传输到Target
-		for _, route := range routes {
-			if route.ID == m.RouteID {
-				target = route.Target
-				break
-			}
-		}
-		conn, err := net.Dial("tcp", target)
+		url := m.Target + req.RequestURI
+		newReq, err := http.NewRequest(req.Method, url, req.Body)
 		if err != nil {
 			return err
 		}
-		// 发送http请求
-		req.Write(conn)
-
-		for {
-			buf := make([]byte, 2048)
-			n, err := conn.Read(buf)
-			if err != nil {
-				return err
-			}
-			// 通过tunnel发送本地响应到服务器
-			c.SendMessage(message.Message{
-				Id:   m.Id,
-				Data: buf[:n],
-				Type: message.MessageTypeData,
-			})
+		resp, err := http.DefaultClient.Do(newReq)
+		if err != nil {
+			log.Println("client request error: ", err)
+			return err
 		}
+		var buf bytes.Buffer
+		resp.Write(&buf)
+		c.SendMessage(message.Message{
+			Id:   m.Id,
+			Data: buf.Bytes(),
+			Type: message.MessageTypeData,
+		})
 	}
 	return nil
 }
@@ -172,7 +162,8 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 			if err == io.EOF {
 				break
 			}
-			log.Fatalln("Tunnel connect error: ", err)
+			log.Println("Tunnel connect error: ", err)
+			continue
 		}
 		log.Printf("Received data on tunnel: %s\n", string(messageStr))
 
@@ -187,10 +178,9 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 			messageId := utils.GenerateID()
 			s.ctx.Messages[messageId] = conn
 			err := s.HandlePublicData(message.Message{
-				Type:     message.MessageTypeData,
-				Data:     messageStr,
-				Id:       messageId,
-				Protocol: model.TypeHttp,
+				Type: message.MessageTypeData,
+				Data: messageStr,
+				Id:   messageId,
 			})
 			if err != nil {
 				fmt.Println("handle public data error:", err)
@@ -237,7 +227,10 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 			case message.MessageTypeDisconnect:
 				fmt.Println("disconnected")
 			case message.MessageTypeHeartbeat:
-				fmt.Println("heartbeat")
+				response.Type = message.MessageTypeHeartbeat
+				response.Data = []byte("pong")
+				message_byte, _ := response.Marshal()
+				conn.Write(message_byte)
 			default:
 				fmt.Println("unknown message type")
 			}
@@ -260,18 +253,17 @@ func (s *TcpServer) SendMessage(m message.Message) error {
 }
 
 func (s *TcpServer) HandlePublicData(m message.Message) error {
-	tunnelID := "ccf7258f-0e41-4e80-a4ea-18ed8195b98e"
+	tunnelID := ""
 	// todo: 消息规则知道转发到哪个隧道
 	// 通过隧道ID获取隧道连接
 	if utils.HttpPattern.Match(m.Data) {
 		// todo: 处理消息 把消息host 转换为规则host
-		// host := GetHostFromHttpMessage(m.Data)
-		host := "localhost"
+		host := GetHostFromHttpMessage(m.Data)
 		for _, route := range s.ctx.Routes {
 			if route.Hostname == host {
 				m.Protocol = route.Protocol
 				tunnelID = route.TunnelID
-				m.RouteID = route.ID
+				m.Target = route.Target
 				break
 			}
 		}
@@ -301,4 +293,52 @@ func (s *TcpServer) HandleData(m message.Message) error {
 	// 通过消息ID获取消息对应
 
 	return nil
+}
+
+func GetHostFromHttpMessage(m []byte) string {
+	reader := bufio.NewReader(bytes.NewReader(m))
+	req, err := http.ReadRequest(reader)
+	if err != nil {
+		return ""
+	}
+	return req.Host
+}
+
+const (
+	heartbeatInterval = 10 * time.Second // 心跳包发送间隔
+	heartbeatMessage  = "ping"           // 心跳包消息
+	heartTimeout      = 10 * time.Second // 超时时间
+	reconnectTimes    = 3                //重连次数
+	reconnectInterval = 6 * time.Second  // 重连间隔
+)
+
+func (c *TcpClient) Heartbeat() error {
+	// 启动一个心跳包的定时器
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		// 发送心跳包
+		err := c.SendMessage(message.Message{
+			Type: message.MessageTypeHeartbeat,
+			Data: []byte(heartbeatMessage),
+		})
+		if err != nil {
+			return err
+		}
+		log.Println("Send heartbeat:", heartbeatMessage)
+	}
+	return nil
+}
+
+func (c *TcpClient) ReconnectToServer() error {
+	for i := range make([]int, reconnectTimes) {
+		fmt.Printf("connect to server failed, retrying...(%d/%d)\n:", i+1, reconnectTimes)
+		err := c.Connect()
+		if err == nil {
+			return nil
+		}
+		time.Sleep(reconnectInterval)
+		continue
+	}
+	return fmt.Errorf("retry timeout")
 }

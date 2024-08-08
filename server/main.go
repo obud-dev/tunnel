@@ -32,7 +32,7 @@ func main() {
 	route := &model.Route{
 		ID:       "1234-5678-abcd-ef",
 		TunnelID: "ccf7258f-0e41-4e80-a4ea-18ed8195b98e",
-		Hostname: "localhost",
+		Hostname: "localhost:5429",
 		Target:   "http://0.0.0.0:8080",
 		Protocol: model.TypeHttp,
 	}
