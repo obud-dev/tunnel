@@ -14,7 +14,7 @@ COPY ./web /app
 RUN npm install && npm run build
 
 # 使用 Go 进行后端构建
-FROM golang:1.22.5 as golang-build
+FROM golang:alpine as golang-build
 
 WORKDIR /app/server
 
