@@ -11,7 +11,7 @@ WORKDIR /app
 COPY ./web /app
 
 # 安装依赖并构建项目
-RUN pnpm install && pnpm run build
+RUN npm install && npm run build
 
 # 使用 Go 进行后端构建
 FROM golang:1.22.5 as golang-build
@@ -27,5 +27,20 @@ COPY --from=react-build /app/dist /app/server/dist
 # 打包 Go 项目
 RUN go build -o server .
 
+# 最后的镜像基于alpin容器
+FROM alpine
+
+WORKDIR /app
+
+# 将构建好的服务器二进制文件和dist目录复制到alpin容器中
+COPY --from=golang-build /app/server/server /app/server
+COPY --from=golang-build /app/server/dist /app/dist
+
+# 安装 libc6-compat 以确保与 Go 二进制兼容
+RUN apk add --no-cache libc6-compat
+
+# 暴露服务端口，以便外部可以访问
+EXPOSE 8000 5429
+
 # 如果需要可以使用以下命令运行服务
-CMD ["./server"]
+CMD ["/app/server"]
