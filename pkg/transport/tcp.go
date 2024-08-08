@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/obud-dev/tunnel/pkg/config"
@@ -107,12 +108,14 @@ func (c *TcpClient) RecieveData(m message.Message) error {
 		if err != nil {
 			return err
 		}
-		url := m.Target + req.RequestURI
-		newReq, err := http.NewRequest(req.Method, url, req.Body)
+		url, err := url.Parse(m.Target + req.URL.RequestURI())
 		if err != nil {
 			return err
 		}
-		resp, err := http.DefaultClient.Do(newReq)
+		req.RequestURI = ""
+		req.Host = url.Host
+		req.URL = url
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			log.Println("client request error: ", err)
 			return err
