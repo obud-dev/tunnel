@@ -16,6 +16,8 @@ RUN npm install && npm run build
 # 使用 Go 进行后端构建
 FROM golang:alpine AS golang-build
 
+WORKDIR /app
+
 # 复制 go.mod 和 go.sum 并安装依赖
 COPY ./go.mod ./go.sum ./
 RUN go mod download
