@@ -203,11 +203,11 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 					} else {
 						tunnel.Status = "online"
 						response.Type = message.MessageTypeConnect
-						tunnel_json, err := json.Marshal(tunnel)
+						tunnelJson, err := json.Marshal(tunnel)
 						if err != nil {
 							log.Println("tunnel json marshal failed")
 						} else {
-							response.Data = []byte(string(tunnel_json))
+							response.Data = []byte(string(tunnelJson))
 							s.ctx.Tunnels[tunnel.ID] = conn
 						}
 					}
@@ -267,18 +267,18 @@ func (s *TcpServer) HandlePublicData(m message.Message) error {
 				break
 			}
 		}
-
 	}
+
 	if utils.SshPattern.Match(m.Data) {
 		m.Protocol = model.TypeSsh
 	}
 
+	// 通过隧道ID获取隧道连接
 	if _, ok := s.ctx.Tunnels[tunnelID]; !ok {
 		return fmt.Errorf("tunnel not found")
 	}
 
 	conn := s.ctx.Tunnels[tunnelID]
-
 	mData, err := m.Marshal()
 	if err != nil {
 		fmt.Println("marshal message error:", err)
