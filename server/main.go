@@ -36,7 +36,7 @@ func main() {
 		TunnelID: "ccf7258f-0e41-4e80-a4ea-18ed8195b98e",
 		Hostname: "localhost:5429",
 		Prefix:   "/example",
-		Target:   "http://0.0.0.0:8080",
+		Target:   "0.0.0.0:8080",
 		Protocol: model.TypeHttp,
 	}
 

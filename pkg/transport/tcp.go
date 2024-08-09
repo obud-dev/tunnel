@@ -11,7 +11,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/obud-dev/tunnel/pkg/config"
@@ -108,25 +107,28 @@ func (c *TcpClient) RecieveData(m message.Message) error {
 		if err != nil {
 			return err
 		}
-		url, err := url.Parse(m.Target + req.URL.RequestURI())
+		fmt.Println("target:", m.Target)
+		conn, err := net.Dial("tcp", m.Target)
 		if err != nil {
 			return err
 		}
-		req.RequestURI = ""
-		req.Host = url.Host
-		req.URL = url
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			log.Println("client request error: ", err)
-			return err
+		// 发送http请求
+		req.Host = m.Target
+		req.Write(conn)
+		for {
+			buf := make([]byte, 2048)
+			n, err := conn.Read(buf)
+			if err != nil {
+				return err
+			}
+			fmt.Println("read response:", string(buf[:n]))
+			// 通过tunnel发送本地响应到服务器
+			c.SendMessage(message.Message{
+				Id:   m.Id,
+				Data: buf[:n],
+				Type: message.MessageTypeData,
+			})
 		}
-		var buf bytes.Buffer
-		resp.Write(&buf)
-		c.SendMessage(message.Message{
-			Id:   m.Id,
-			Data: buf.Bytes(),
-			Type: message.MessageTypeData,
-		})
 	}
 	return nil
 }
@@ -308,11 +310,11 @@ func GetHostFromHttpMessage(m []byte) string {
 }
 
 const (
-	heartbeatInterval = 10 * time.Second // 心跳包发送间隔
+	heartbeatInterval = 30 * time.Second // 心跳包发送间隔
 	heartbeatMessage  = "ping"           // 心跳包消息
-	heartTimeout      = 10 * time.Second // 超时时间
-	reconnectTimes    = 3                //重连次数
-	reconnectInterval = 6 * time.Second  // 重连间隔
+	heartTimeout      = 60 * time.Second // 心跳包超时时间
+	reconnectTimes    = 3                // 重连次数
+	reconnectInterval = 10 * time.Second // 重连间隔
 )
 
 func (c *TcpClient) Heartbeat() error {
@@ -320,6 +322,8 @@ func (c *TcpClient) Heartbeat() error {
 	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
 	for range ticker.C {
+		// 设置心跳包超时时间
+		c.conn.SetWriteDeadline(time.Now().Add(heartTimeout))
 		// 发送心跳包
 		err := c.SendMessage(message.Message{
 			Type: message.MessageTypeHeartbeat,
