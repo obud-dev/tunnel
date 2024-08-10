@@ -43,11 +43,9 @@ func main() {
 	svcCtx.RouteModel.Update(route)
 
 	server = transport.NewTcpServer(svcCtx)
-	go func() {
-		server.Listen()
-		// if err != nil {
-		// 	panic(err)
-		// }
-	}()
-	ApiServer(svcCtx)
+
+	go server.Listen()
+	go ApiServer(svcCtx)
+
+	select {}
 }
