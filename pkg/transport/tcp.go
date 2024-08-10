@@ -299,7 +299,7 @@ func (s *TcpServer) HandlePublicData(m message.Message) error {
 		log.Error().Err(err).Msg("Error sending message")
 		return err
 	}
-	log.Info().Msg("Data sent to tunnel")
+	log.Debug().Msg("Data sent to tunnel")
 	return nil
 }
 
