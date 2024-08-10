@@ -18,7 +18,7 @@ import (
 
 // TCP Client Constants
 const (
-	heartbeatInterval = 30 * time.Second // 心跳包发送间隔
+	heartbeatInterval = 10 * time.Second // 心跳包发送间隔
 	reconnectAttempts = 3                // 最大重连尝试次数
 	reconnectInterval = 10 * time.Second // 每次重连间隔
 	heartTimeout      = 5 * time.Second  // 心跳包超时时间
@@ -52,12 +52,10 @@ func (c *TcpClient) Connect() error {
 	if err != nil {
 		return fmt.Errorf("failed to encode config: %w", err)
 	}
-	if err := c.SendMessage(message.Message{
+	c.SendMessage(message.Message{
 		Type: message.MessageTypeConnect,
 		Data: []byte(data),
-	}); err != nil {
-		return err
-	}
+	})
 
 	go c.readLoop()
 	go c.Heartbeat()
@@ -83,7 +81,7 @@ func (c *TcpClient) readLoop() {
 
 		m, err := message.Unmarshal(buf[:n])
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to unmarshal message")
+			log.Error().Err(err).Msgf("Failed to unmarshal message %s", buf[:n])
 			continue
 		}
 
@@ -108,18 +106,19 @@ func (c *TcpClient) handleMessage(m *message.Message) {
 }
 
 // SendMessage sends a message to the server
-func (c *TcpClient) SendMessage(m message.Message) error {
+func (c *TcpClient) SendMessage(m message.Message) {
 	data, err := m.Marshal()
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to marshal message")
-		return err
+		return
 	}
 
-	if _, err := c.conn.Write(data); err != nil {
-		log.Error().Err(err).Msg("Failed to send message")
-		return err
+	_, err = c.conn.Write(data)
+	if err != nil {
+		log.Error().Err(err).Msgf("Failed to send message: %v", m.Type)
+		c.ReconnectToServer()
+		return
 	}
-	return nil
 }
 
 // RecieveData processes data received from the server
@@ -169,16 +168,17 @@ func (c *TcpClient) Heartbeat() {
 	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(heartTimeout))
-			if err := c.SendMessage(message.Message{
-				Type: message.MessageTypeHeartbeat,
-				Data: []byte("ping"),
-			}); err != nil {
-				log.Error().Err(err).Msg("Failed to send heartbeat")
-			}
+	for range ticker.C {
+		c.conn.SetWriteDeadline(time.Now().Add(heartTimeout))
+		m := message.Message{
+			Type: message.MessageTypeHeartbeat,
+			Data: []byte("ping"),
+		}
+		mBytes, _ := m.Marshal()
+		_, err := c.conn.Write(mBytes)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to send heartbeat")
+			c.ReconnectToServer()
 		}
 	}
 }
@@ -252,6 +252,7 @@ func (s *TcpServer) processMessage(messageStr []byte, conn net.Conn) {
 	if err != nil {
 		// 从外部接收到的数据，转发到内部
 		messageId := utils.GenerateID()
+		log.Debug().Msgf("New message ID: %s", messageId)
 		s.ctx.Messages[messageId] = conn
 		s.handleData(message.Message{
 			Type: message.MessageTypeData,
@@ -265,6 +266,11 @@ func (s *TcpServer) processMessage(messageStr []byte, conn net.Conn) {
 	case message.MessageTypeConnect:
 		s.HandleConnect(*m, conn)
 	case message.MessageTypeData:
+		messageIds := make([]string, 0)
+		for id := range s.ctx.Messages {
+			messageIds = append(messageIds, id)
+		}
+		log.Debug().Msgf("Messages %v", messageIds)
 		s.ctx.Messages[m.Id].Write(m.Data)
 		s.ctx.Messages[m.Id].Close()
 		delete(s.ctx.Messages, m.Id)
@@ -346,7 +352,6 @@ func (s *TcpServer) handleData(m message.Message) {
 		return
 	}
 	log.Debug().Msg("Data sent to tunnel")
-	return
 }
 
 // sendHeartbeatResponse sends a heartbeat response to the client
