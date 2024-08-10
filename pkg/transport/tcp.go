@@ -55,10 +55,12 @@ func (c *TcpClient) Connect() error {
 		buf := make([]byte, 2048)
 		n, err := c.conn.Read(buf)
 		if err != nil {
-			err := c.ReconnectToServer()
-			if err != nil {
-				log.Error().Err(err).Msg("Reconnect to server failed")
+			errr := c.ReconnectToServer()
+			if errr != nil {
+				log.Error().Err(errr).Msg("Reconnect to server failed")
+				return errr
 			}
+			continue
 		}
 		log.Debug().Msgf("Received bytes")
 		m, err := message.Unmarshal(buf[:n])
@@ -69,12 +71,12 @@ func (c *TcpClient) Connect() error {
 		case message.MessageTypeData:
 			go c.RecieveData(*m)
 		case message.MessageTypeConnect:
-			log.Info().Msg("Connected to server")
+			log.Info().Msgf("Connected to server %s", c.conf.Server)
 			go c.Heartbeat()
 		case message.MessageTypeDisconnect:
 			log.Info().Msg("Disconnected from server")
 		case message.MessageTypeHeartbeat:
-			log.Info().Msg("Received heartbeat")
+			log.Debug().Msg("Received heartbeat")
 		default:
 			log.Warn().Msg("Unknown message type")
 		}
@@ -84,9 +86,13 @@ func (c *TcpClient) Connect() error {
 func (c *TcpClient) SendMessage(m message.Message) error {
 	data, err := m.Marshal()
 	if err != nil {
+		log.Error().Err(err).Msg("Error marshalling message")
 		return err
 	}
 	_, err = c.conn.Write(data)
+	if err != nil {
+		log.Error().Err(err).Msg("Error sending message")
+	}
 	return err
 }
 
@@ -96,11 +102,12 @@ func (c *TcpClient) Close() error {
 
 func (c *TcpClient) RecieveData(m message.Message) error {
 	// 转发数据到内网服务
-	log.Info().Msg("Received data")
+	log.Debug().Msg("Received data")
 	switch m.Protocol {
 	case model.TypeHttp:
 		conn, err := net.Dial("tcp", m.Target)
 		if err != nil {
+			log.Error().Err(err).Msg("Error connecting to target")
 			return err
 		}
 		conn.Write(m.Data)
@@ -108,6 +115,7 @@ func (c *TcpClient) RecieveData(m message.Message) error {
 			buf := make([]byte, 2048)
 			n, err := conn.Read(buf)
 			if err != nil {
+				log.Error().Err(err).Msg("Error reading from target")
 				return err
 			}
 			log.Info().Msg("Received response")
@@ -118,6 +126,8 @@ func (c *TcpClient) RecieveData(m message.Message) error {
 				Type: message.MessageTypeData,
 			})
 		}
+	default:
+		log.Warn().Msg("Unknown protocol")
 	}
 	return nil
 }
@@ -133,13 +143,15 @@ func NewTcpServer(ctx *svc.ServerCtx) *TcpServer {
 func (s *TcpServer) Listen() error {
 	ln, err := net.Listen("tcp", s.ctx.Config.ListenOn)
 	if err != nil {
+		log.Error().Err(err).Msg("Error listening")
 		return err
 	}
 	log.Info().Msgf("Listening on %s", s.ctx.Config.ListenOn)
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			return err
+			log.Error().Err(err).Msg("Error accepting connection")
+			continue
 		}
 		go s.handleConn(conn)
 	}
@@ -160,7 +172,8 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 			conn.Close()
 			break
 		}
-		log.Info().Msgf("Received bytes")
+
+		log.Debug().Msgf("Received bytes")
 
 		response := &message.Message{}
 		response.Id = utils.GenerateID()
@@ -214,7 +227,7 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 				if response.Type == message.MessageTypeDisconnect {
 					conn.Close()
 				}
-				log.Info().Msg("connected")
+				log.Info().Msgf("Connected from tunnel %s", client.TunnelID)
 			case message.MessageTypeData:
 				if _, ok := s.ctx.Messages[request.Id]; ok {
 					s.ctx.Messages[request.Id].Write(request.Data)
@@ -281,7 +294,11 @@ func (s *TcpServer) HandlePublicData(m message.Message) error {
 		log.Error().Err(err).Msg("Error marshalling message")
 		return err
 	}
-	conn.Write(mData)
+	_, err = conn.Write(mData)
+	if err != nil {
+		log.Error().Err(err).Msg("Error sending message")
+		return err
+	}
 	log.Info().Msg("Data sent to tunnel")
 	return nil
 }
@@ -324,7 +341,7 @@ func (c *TcpClient) Heartbeat() error {
 		if err != nil {
 			return err
 		}
-		log.Info().Msg("Sent heartbeat")
+		log.Debug().Msg("Sent heartbeat")
 	}
 	return nil
 }
