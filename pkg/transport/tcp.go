@@ -1,15 +1,10 @@
 package transport
 
-// 使用tcp协议进行通信
-
 import (
 	"bufio"
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -21,131 +16,204 @@ import (
 	"github.com/obud-dev/tunnel/pkg/utils"
 )
 
-// TCPClient is a client for the TCP protocol
+// TCP Client Constants
+const (
+	heartbeatInterval = 30 * time.Second // 心跳包发送间隔
+	reconnectAttempts = 3                // 最大重连尝试次数
+	reconnectInterval = 10 * time.Second // 每次重连间隔
+	heartTimeout      = 5 * time.Second  // 心跳包超时时间
+)
+
+// TcpClient is a client for the TCP protocol
 type TcpClient struct {
 	conn net.Conn
 	conf *config.ClientConfig
 }
 
-// NewTCPClient creates a new TCP client
-func NewTcpClient(token string) *TcpClient {
+// NewTcpClient creates a new TCP client
+func NewTcpClient(token string) (*TcpClient, error) {
 	conf, err := config.ParseFromEncoded(token)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
-	return &TcpClient{conf: conf}
+	return &TcpClient{conf: conf}, nil
 }
 
+// Connect establishes a TCP connection to the server
 func (c *TcpClient) Connect() error {
-	// 连接服务器
-	conn, err := net.Dial("tcp", c.conf.Server)
+	var err error
+	c.conn, err = net.Dial("tcp", c.conf.Server)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect to server: %w", err)
 	}
-	c.conn = conn
-	// 发送连接消息
-	data, _ := c.conf.Encode()
-	c.SendMessage(message.Message{
+	log.Info().Msgf("Connecting to server: %s", c.conf.Server)
+	// Send connection message
+	data, err := c.conf.Encode()
+	if err != nil {
+		return fmt.Errorf("failed to encode config: %w", err)
+	}
+	if err := c.SendMessage(message.Message{
 		Type: message.MessageTypeConnect,
 		Data: []byte(data),
-	})
+	}); err != nil {
+		return err
+	}
 
+	go c.readLoop()
+	go c.Heartbeat()
+	select {}
+}
+
+// readLoop handles incoming messages from the server
+func (c *TcpClient) readLoop() {
+	defer c.conn.Close()
+
+	reader := bufio.NewReader(c.conn)
 	for {
-		// 读取数据 buf 设置太小会d
 		buf := make([]byte, 2048)
-		n, err := c.conn.Read(buf)
+		n, err := reader.Read(buf)
 		if err != nil {
-			errr := c.ReconnectToServer()
-			if errr != nil {
-				log.Error().Err(errr).Msg("Reconnect to server failed")
-				return errr
+			if err == io.EOF {
+				log.Info().Msg("Connection closed by server")
+			} else {
+				log.Error().Err(err).Msg("Error reading from server")
 			}
-			continue
+			break
 		}
-		log.Debug().Msgf("Received bytes")
+
 		m, err := message.Unmarshal(buf[:n])
 		if err != nil {
-			return err
+			log.Error().Err(err).Msg("Failed to unmarshal message")
+			continue
 		}
-		switch m.Type {
-		case message.MessageTypeData:
-			go c.RecieveData(*m)
-		case message.MessageTypeConnect:
-			log.Info().Msgf("Connected to server %s", c.conf.Server)
-			go c.Heartbeat()
-		case message.MessageTypeDisconnect:
-			log.Info().Msg("Disconnected from server")
-		case message.MessageTypeHeartbeat:
-			log.Debug().Msg("Received heartbeat")
-		default:
-			log.Warn().Msg("Unknown message type")
-		}
+
+		c.handleMessage(m)
 	}
 }
 
+// handleMessage processes different types of messages from the server
+func (c *TcpClient) handleMessage(m *message.Message) {
+	switch m.Type {
+	case message.MessageTypeData:
+		go c.RecieveData(*m)
+	case message.MessageTypeConnect:
+		log.Info().Msg("Connected to server")
+	case message.MessageTypeDisconnect:
+		log.Info().Msg("Disconnected from server")
+	case message.MessageTypeHeartbeat:
+		log.Debug().Msg("Received heartbeat")
+	default:
+		log.Warn().Msg("Unknown message type")
+	}
+}
+
+// SendMessage sends a message to the server
 func (c *TcpClient) SendMessage(m message.Message) error {
 	data, err := m.Marshal()
 	if err != nil {
-		log.Error().Err(err).Msg("Error marshalling message")
+		log.Error().Err(err).Msg("Failed to marshal message")
 		return err
 	}
-	_, err = c.conn.Write(data)
-	if err != nil {
-		log.Error().Err(err).Msg("Error sending message")
-	}
-	return err
-}
 
-func (c *TcpClient) Close() error {
-	return c.conn.Close()
-}
-
-func (c *TcpClient) RecieveData(m message.Message) error {
-	// 转发数据到内网服务
-	log.Debug().Msg("Received data")
-	switch m.Protocol {
-	case model.TypeHttp:
-		conn, err := net.Dial("tcp", m.Target)
-		if err != nil {
-			log.Error().Err(err).Msg("Error connecting to target")
-			return err
-		}
-		conn.Write(m.Data)
-		for {
-			buf := make([]byte, 2048)
-			n, err := conn.Read(buf)
-			if err != nil {
-				log.Error().Err(err).Msg("Error reading from target")
-				return err
-			}
-			log.Info().Msg("Received response")
-			// 通过tunnel发送本地响应到服务器
-			c.SendMessage(message.Message{
-				Id:   m.Id,
-				Data: buf[:n],
-				Type: message.MessageTypeData,
-			})
-		}
-	default:
-		log.Warn().Msg("Unknown protocol")
+	if _, err := c.conn.Write(data); err != nil {
+		log.Error().Err(err).Msg("Failed to send message")
+		return err
 	}
 	return nil
 }
 
+// RecieveData processes data received from the server
+func (c *TcpClient) RecieveData(m message.Message) {
+	log.Debug().Msg("Received data from server")
+
+	// Handle the received data based on the protocol
+	switch m.Protocol {
+	case model.TypeHttp:
+		// For HTTP data, initiate a request
+		c.handleHttpData(m)
+	default:
+		log.Warn().Msg("Unknown protocol type for received data")
+	}
+}
+
+// handleHttpData processes HTTP data received from the server
+func (c *TcpClient) handleHttpData(m message.Message) {
+	// You need to implement the actual HTTP handling logic here.
+	// For example, you might create a new HTTP request using the received data.
+	conn, err := net.Dial("tcp", m.Target)
+	if err != nil {
+		log.Error().Err(err).Msg("Error connecting to target")
+		return
+	}
+	conn.Write(m.Data)
+	for {
+		buf := make([]byte, 2048)
+		n, err := conn.Read(buf)
+		if err != nil {
+			log.Error().Err(err).Msg("Error reading from target")
+			conn.Close()
+			break
+		}
+		log.Info().Msg("Received response")
+		// 通过tunnel发送本地响应到服务器
+		c.SendMessage(message.Message{
+			Id:   m.Id,
+			Data: buf[:n],
+			Type: message.MessageTypeData,
+		})
+	}
+}
+
+// Heartbeat sends periodic heartbeat messages to the server
+func (c *TcpClient) Heartbeat() {
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(heartTimeout))
+			if err := c.SendMessage(message.Message{
+				Type: message.MessageTypeHeartbeat,
+				Data: []byte("ping"),
+			}); err != nil {
+				log.Error().Err(err).Msg("Failed to send heartbeat")
+			}
+		}
+	}
+}
+
+// ReconnectToServer attempts to reconnect to the TCP server
+func (c *TcpClient) ReconnectToServer() error {
+	for i := 0; i < reconnectAttempts; i++ {
+		log.Info().Msgf("Reconnect attempt %d/%d", i+1, reconnectAttempts)
+		if err := c.Connect(); err == nil {
+			return nil
+		}
+		time.Sleep(reconnectInterval)
+	}
+	return fmt.Errorf("all reconnect attempts failed")
+}
+
+// TcpServer represents a TCP server
 type TcpServer struct {
 	ctx *svc.ServerCtx
 }
 
+// NewTcpServer creates a new TCP server instance
 func NewTcpServer(ctx *svc.ServerCtx) *TcpServer {
 	return &TcpServer{ctx: ctx}
 }
 
+// Listen starts the TCP server and listens for incoming connections
 func (s *TcpServer) Listen() error {
 	ln, err := net.Listen("tcp", s.ctx.Config.ListenOn)
 	if err != nil {
-		log.Error().Err(err).Msg("Error listening")
+		log.Error().Err(err).Msg("Error starting server")
 		return err
 	}
+	defer ln.Close()
+
 	log.Info().Msgf("Listening on %s", s.ctx.Config.ListenOn)
 	for {
 		conn, err := ln.Accept()
@@ -157,117 +225,95 @@ func (s *TcpServer) Listen() error {
 	}
 }
 
+// handleConn manages an individual connection from a client
 func (s *TcpServer) handleConn(conn net.Conn) {
-	log.Info().Msg("Tunnel connection established with the client")
+	log.Info().Msg("Connection established with client")
+
 	reader := bufio.NewReader(conn)
 	for {
 		buf := make([]byte, 2048)
 		n, err := reader.Read(buf)
-		messageStr := buf[:n]
 		if err != nil {
 			if err == io.EOF {
-				break
+				log.Info().Msg("Connection closed by client")
+			} else {
+				log.Error().Err(err).Msg("Error reading from client")
 			}
-			log.Error().Err(err).Msg("Error reading from tunnel")
-			conn.Close()
 			break
 		}
-
-		log.Debug().Msgf("Received bytes")
-
-		response := &message.Message{}
-		response.Id = utils.GenerateID()
-		response.Type = message.MessageTypeDisconnect
-		response.Data = []byte("connect error")
-
-		request, errx := message.Unmarshal(messageStr)
-		if errx != nil {
-			// 从外部接收到的数据，转发到内部
-			messageId := utils.GenerateID()
-			s.ctx.Messages[messageId] = conn
-			err := s.HandlePublicData(message.Message{
-				Type: message.MessageTypeData,
-				Data: messageStr,
-				Id:   messageId,
-			})
-			if err != nil {
-				log.Error().Err(err).Msg("Error handling public data")
-				s.ctx.Messages[messageId].Close()
-				delete(s.ctx.Messages, messageId)
-			}
-		} else {
-			switch request.Type {
-			case message.MessageTypeConnect:
-				log.Info().Msg("Received connect message")
-				client, err := config.ParseFromEncoded(string(request.Data))
-				if err != nil {
-					log.Error().Err(err).Msg("Error parsing token")
-				} else {
-					// 从数据库中查找tunnel_id对应的记录
-					tunnel, err := s.ctx.TunnelModel.GetTunnelByID(client.TunnelID)
-					if err != nil {
-						log.Error().Err(err).Msg("Error getting tunnel")
-						response.Data = []byte("tunnel not found on server")
-					} else {
-						tunnel.Status = "online"
-						response.Type = message.MessageTypeConnect
-						tunnelJson, err := json.Marshal(tunnel)
-						if err != nil {
-							log.Error().Err(err).Msg("Error marshalling tunnel")
-						} else {
-							response.Data = []byte(string(tunnelJson))
-							s.ctx.Tunnels[tunnel.ID] = conn
-						}
-					}
-				}
-				// 写回数据
-				messageBytes, _ := response.Marshal()
-				conn.Write(messageBytes)
-				// 验证失败，关闭连接
-				if response.Type == message.MessageTypeDisconnect {
-					conn.Close()
-				}
-				log.Info().Msgf("Connected from tunnel %s", client.TunnelID)
-			case message.MessageTypeData:
-				if _, ok := s.ctx.Messages[request.Id]; ok {
-					s.ctx.Messages[request.Id].Write(request.Data)
-				}
-			case message.MessageTypeDisconnect:
-				log.Info().Msg("Disconnected")
-				conn.Close()
-			case message.MessageTypeHeartbeat:
-				response.Type = message.MessageTypeHeartbeat
-				response.Data = []byte("pong")
-				messageBytes, _ := response.Marshal()
-				conn.Write(messageBytes)
-			default:
-				log.Warn().Msg("Unknown message type")
-			}
-		}
+		s.processMessage(buf[:n], conn)
 	}
 }
 
-func (s *TcpServer) HandleConnect(conn net.Conn, m message.Message) error {
-	conf, err := config.ParseFromEncoded(string(m.Data))
+// processMessage processes incoming messages from the client
+func (s *TcpServer) processMessage(messageStr []byte, conn net.Conn) {
+	log.Debug().Msgf("Processing message")
+	m, err := message.Unmarshal(messageStr)
 	if err != nil {
-		return err
+		// 从外部接收到的数据，转发到内部
+		messageId := utils.GenerateID()
+		s.ctx.Messages[messageId] = conn
+		s.handleData(message.Message{
+			Type: message.MessageTypeData,
+			Data: messageStr,
+			Id:   messageId,
+		})
+		return
 	}
-	// todo: 校验token
-	s.ctx.Tunnels[conf.TunnelID] = conn
-	return nil
+
+	switch m.Type {
+	case message.MessageTypeConnect:
+		s.HandleConnect(*m, conn)
+	case message.MessageTypeData:
+		s.ctx.Messages[m.Id].Write(m.Data)
+		s.ctx.Messages[m.Id].Close()
+		delete(s.ctx.Messages, m.Id)
+	case message.MessageTypeDisconnect:
+		log.Info().Msg("Client disconnected")
+	case message.MessageTypeHeartbeat:
+		s.sendHeartbeatResponse(conn)
+	default:
+		log.Warn().Msg("Unknown message type")
+	}
 }
 
-func (s *TcpServer) SendMessage(m message.Message) error {
-	return nil
+// handleConnect manages the connection request from the client
+func (s *TcpServer) HandleConnect(m message.Message, conn net.Conn) {
+	clientConfig, err := config.ParseFromEncoded(string(m.Data))
+	if err != nil {
+		log.Error().Err(err).Msg("Error parsing client config")
+		s.sendDisconnectResponse(conn, "Invalid config")
+		return
+	}
+
+	tunnel, err := s.ctx.TunnelModel.GetTunnelByID(clientConfig.TunnelID)
+	if err != nil {
+		log.Error().Err(err).Msg("Error retrieving tunnel")
+		s.sendDisconnectResponse(conn, "Tunnel not found")
+		return
+	}
+
+	tunnel.Status = "online"
+	s.ctx.Tunnels[tunnel.ID] = conn
+
+	response := message.Message{
+		Type: message.MessageTypeConnect,
+		Data: []byte(fmt.Sprintf("Connected to tunnel %s", clientConfig.TunnelID)),
+	}
+	if err := s.sendResponse(conn, response); err != nil {
+		log.Error().Err(err).Msg("Failed to send response")
+	}
+	log.Info().Msgf("Client connected: %s", clientConfig.TunnelID)
 }
 
-func (s *TcpServer) HandlePublicData(m message.Message) error {
+// handleData processes the data from the client
+func (s *TcpServer) handleData(m message.Message) {
 	tunnelID := ""
 	// todo: 消息规则知道转发到哪个隧道
 	// 通过隧道ID获取隧道连接
 	if utils.HttpPattern.Match(m.Data) {
 		// todo: 处理消息 把消息host 转换为规则host
-		host := GetHostFromHttpMessage(m.Data)
+		host := utils.GetHostFromHttpMessage(m.Data)
 		for _, route := range s.ctx.Routes {
 			if route.Hostname == host {
 				m.Protocol = route.Protocol
@@ -285,76 +331,52 @@ func (s *TcpServer) HandlePublicData(m message.Message) error {
 	// 通过隧道ID获取隧道连接
 	if _, ok := s.ctx.Tunnels[tunnelID]; !ok {
 		log.Error().Msg("tunnel not found")
-		return fmt.Errorf("tunnel not found")
+		return
 	}
 
 	conn := s.ctx.Tunnels[tunnelID]
 	mData, err := m.Marshal()
 	if err != nil {
 		log.Error().Err(err).Msg("Error marshalling message")
-		return err
+		return
 	}
 	_, err = conn.Write(mData)
 	if err != nil {
 		log.Error().Err(err).Msg("Error sending message")
-		return err
+		return
 	}
 	log.Debug().Msg("Data sent to tunnel")
-	return nil
+	return
 }
 
-func (s *TcpServer) HandleData(m message.Message) error {
-	// 通过消息ID获取消息对应
-
-	return nil
+// sendHeartbeatResponse sends a heartbeat response to the client
+func (s *TcpServer) sendHeartbeatResponse(conn net.Conn) {
+	response := message.Message{
+		Type: message.MessageTypeHeartbeat,
+		Data: []byte("pong"),
+	}
+	if err := s.sendResponse(conn, response); err != nil {
+		log.Error().Err(err).Msg("Failed to send heartbeat response")
+	}
 }
 
-func GetHostFromHttpMessage(m []byte) string {
-	reader := bufio.NewReader(bytes.NewReader(m))
-	req, err := http.ReadRequest(reader)
+// sendResponse sends a message back to the client
+func (s *TcpServer) sendResponse(conn net.Conn, response message.Message) error {
+	data, err := response.Marshal()
 	if err != nil {
-		return ""
+		return fmt.Errorf("failed to marshal response: %w", err)
 	}
-	return req.Host
-}
-
-const (
-	heartbeatInterval = 30 * time.Second // 心跳包发送间隔
-	heartbeatMessage  = "ping"           // 心跳包消息
-	heartTimeout      = 60 * time.Second // 心跳包超时时间
-	reconnectTimes    = 3                // 重连次数
-	reconnectInterval = 10 * time.Second // 重连间隔
-)
-
-func (c *TcpClient) Heartbeat() error {
-	// 启动一个心跳包的定时器
-	ticker := time.NewTicker(heartbeatInterval)
-	defer ticker.Stop()
-	for range ticker.C {
-		// 设置心跳包超时时间
-		c.conn.SetWriteDeadline(time.Now().Add(heartTimeout))
-		// 发送心跳包
-		err := c.SendMessage(message.Message{
-			Type: message.MessageTypeHeartbeat,
-			Data: []byte(heartbeatMessage),
-		})
-		if err != nil {
-			return err
-		}
-		log.Debug().Msg("Sent heartbeat")
+	if _, err = conn.Write(data); err != nil {
+		return fmt.Errorf("failed to send response: %w", err)
 	}
 	return nil
 }
 
-func (c *TcpClient) ReconnectToServer() error {
-	for i := range make([]int, reconnectTimes) {
-		log.Info().Msgf("connect to server failed, retrying...(%d/%d)\n:", i+1, reconnectTimes)
-		err := c.Connect()
-		if err == nil {
-			return nil
-		}
-		time.Sleep(reconnectInterval)
-		continue
+// sendDisconnectResponse sends a disconnect message to the client
+func (s *TcpServer) sendDisconnectResponse(conn net.Conn, reason string) {
+	response := message.Message{
+		Type: message.MessageTypeDisconnect,
+		Data: []byte(reason),
 	}
-	return fmt.Errorf("retry timeout")
+	s.sendResponse(conn, response)
 }

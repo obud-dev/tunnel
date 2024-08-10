@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/obud-dev/tunnel/pkg/transport"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -11,6 +12,10 @@ const (
 func main() {
 
 	// 连接到公网服务器
-	client := transport.NewTcpClient(token)
+	client, err := transport.NewTcpClient(token)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to create client")
+		return
+	}
 	client.Connect()
 }

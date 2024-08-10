@@ -17,10 +17,7 @@ const (
 
 type Server interface {
 	Listen() error
-	HandleConnect(conn net.Conn, m message.Message) error
-	HandlePublicData(m message.Message) error
-	HandleData(m message.Message) error
-	SendMessage(m message.Message) error
+	HandleConnect(m message.Message, conn net.Conn)
 }
 
 type ServerCtx struct {
