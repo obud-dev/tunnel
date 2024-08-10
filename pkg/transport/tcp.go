@@ -8,10 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/obud-dev/tunnel/pkg/config"
 	"github.com/obud-dev/tunnel/pkg/message"
@@ -56,10 +57,10 @@ func (c *TcpClient) Connect() error {
 		if err != nil {
 			err := c.ReconnectToServer()
 			if err != nil {
-				log.Fatalln(err)
+				log.Error().Err(err).Msg("Reconnect to server failed")
 			}
 		}
-		fmt.Println("read data:", string(buf[:n]))
+		log.Debug().Msgf("Received bytes")
 		m, err := message.Unmarshal(buf[:n])
 		if err != nil {
 			return err
@@ -67,18 +68,15 @@ func (c *TcpClient) Connect() error {
 		switch m.Type {
 		case message.MessageTypeData:
 			go c.RecieveData(*m)
-		// case message.MessageTypeRouteUpdate:
-		// 	fmt.Println("route update")
-		// 	c.UpdateRoutes()
 		case message.MessageTypeConnect:
-			fmt.Println("connected")
+			log.Info().Msg("Connected to server")
 			go c.Heartbeat()
 		case message.MessageTypeDisconnect:
-			fmt.Println("disconnected")
+			log.Info().Msg("Disconnected from server")
 		case message.MessageTypeHeartbeat:
-			log.Println("Received heartbeat:", string(m.Data))
+			log.Info().Msg("Received heartbeat")
 		default:
-			fmt.Println("unknown message type")
+			log.Warn().Msg("Unknown message type")
 		}
 	}
 }
@@ -98,30 +96,21 @@ func (c *TcpClient) Close() error {
 
 func (c *TcpClient) RecieveData(m message.Message) error {
 	// 转发数据到内网服务
-	fmt.Println("client recieve data:", string(m.Data))
+	log.Info().Msg("Received data")
 	switch m.Protocol {
 	case model.TypeHttp:
-		// 转发http请求
-		reader := bufio.NewReader(bytes.NewReader(m.Data))
-		req, err := http.ReadRequest(reader)
-		if err != nil {
-			return err
-		}
-		fmt.Println("target:", m.Target)
 		conn, err := net.Dial("tcp", m.Target)
 		if err != nil {
 			return err
 		}
-		// 发送http请求
-		req.Host = m.Target
-		req.Write(conn)
+		conn.Write(m.Data)
 		for {
 			buf := make([]byte, 2048)
 			n, err := conn.Read(buf)
 			if err != nil {
 				return err
 			}
-			fmt.Println("read response:", string(buf[:n]))
+			log.Info().Msg("Received response")
 			// 通过tunnel发送本地响应到服务器
 			c.SendMessage(message.Message{
 				Id:   m.Id,
@@ -146,7 +135,7 @@ func (s *TcpServer) Listen() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Listening on %s\n", s.ctx.Config.ListenOn)
+	log.Info().Msgf("Listening on %s", s.ctx.Config.ListenOn)
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -157,7 +146,7 @@ func (s *TcpServer) Listen() error {
 }
 
 func (s *TcpServer) handleConn(conn net.Conn) {
-	log.Println("Tunnel connection established with the client")
+	log.Info().Msg("Tunnel connection established with the client")
 	reader := bufio.NewReader(conn)
 	for {
 		buf := make([]byte, 2048)
@@ -167,10 +156,11 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 			if err == io.EOF {
 				break
 			}
-			log.Println("Tunnel connect error: ", err)
-			continue
+			log.Error().Err(err).Msg("Error reading from tunnel")
+			conn.Close()
+			break
 		}
-		log.Printf("Received data on tunnel: %s\n", string(messageStr))
+		log.Info().Msgf("Received bytes")
 
 		response := &message.Message{}
 		response.Id = utils.GenerateID()
@@ -188,29 +178,29 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 				Id:   messageId,
 			})
 			if err != nil {
-				fmt.Println("handle public data error:", err)
+				log.Error().Err(err).Msg("Error handling public data")
 				s.ctx.Messages[messageId].Close()
 				delete(s.ctx.Messages, messageId)
 			}
 		} else {
 			switch request.Type {
 			case message.MessageTypeConnect:
-				log.Println("token:", string(request.Data))
-				token_request, err := config.ParseFromEncoded(string(request.Data))
+				log.Info().Msg("Received connect message")
+				client, err := config.ParseFromEncoded(string(request.Data))
 				if err != nil {
-					log.Println("error parse connect token:", err)
+					log.Error().Err(err).Msg("Error parsing token")
 				} else {
 					// 从数据库中查找tunnel_id对应的记录
-					tunnel, err := s.ctx.TunnelModel.GetTunnelByID(token_request.TunnelID)
+					tunnel, err := s.ctx.TunnelModel.GetTunnelByID(client.TunnelID)
 					if err != nil {
-						log.Println("tunnel not found")
+						log.Error().Err(err).Msg("Error getting tunnel")
 						response.Data = []byte("tunnel not found on server")
 					} else {
 						tunnel.Status = "online"
 						response.Type = message.MessageTypeConnect
 						tunnelJson, err := json.Marshal(tunnel)
 						if err != nil {
-							log.Println("tunnel json marshal failed")
+							log.Error().Err(err).Msg("Error marshalling tunnel")
 						} else {
 							response.Data = []byte(string(tunnelJson))
 							s.ctx.Tunnels[tunnel.ID] = conn
@@ -218,26 +208,27 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 					}
 				}
 				// 写回数据
-				message_byte, _ := response.Marshal()
-				conn.Write(message_byte)
+				messageBytes, _ := response.Marshal()
+				conn.Write(messageBytes)
 				// 验证失败，关闭连接
 				if response.Type == message.MessageTypeDisconnect {
 					conn.Close()
 				}
-				fmt.Println("connected")
+				log.Info().Msg("connected")
 			case message.MessageTypeData:
 				if _, ok := s.ctx.Messages[request.Id]; ok {
 					s.ctx.Messages[request.Id].Write(request.Data)
 				}
 			case message.MessageTypeDisconnect:
-				fmt.Println("disconnected")
+				log.Info().Msg("Disconnected")
+				conn.Close()
 			case message.MessageTypeHeartbeat:
 				response.Type = message.MessageTypeHeartbeat
 				response.Data = []byte("pong")
-				message_byte, _ := response.Marshal()
-				conn.Write(message_byte)
+				messageBytes, _ := response.Marshal()
+				conn.Write(messageBytes)
 			default:
-				fmt.Println("unknown message type")
+				log.Warn().Msg("Unknown message type")
 			}
 		}
 	}
@@ -280,17 +271,18 @@ func (s *TcpServer) HandlePublicData(m message.Message) error {
 
 	// 通过隧道ID获取隧道连接
 	if _, ok := s.ctx.Tunnels[tunnelID]; !ok {
+		log.Error().Msg("tunnel not found")
 		return fmt.Errorf("tunnel not found")
 	}
 
 	conn := s.ctx.Tunnels[tunnelID]
 	mData, err := m.Marshal()
 	if err != nil {
-		fmt.Println("marshal message error:", err)
+		log.Error().Err(err).Msg("Error marshalling message")
 		return err
 	}
 	conn.Write(mData)
-	fmt.Println("send data to tunnel")
+	log.Info().Msg("Data sent to tunnel")
 	return nil
 }
 
@@ -332,14 +324,14 @@ func (c *TcpClient) Heartbeat() error {
 		if err != nil {
 			return err
 		}
-		log.Println("Send heartbeat:", heartbeatMessage)
+		log.Info().Msg("Sent heartbeat")
 	}
 	return nil
 }
 
 func (c *TcpClient) ReconnectToServer() error {
 	for i := range make([]int, reconnectTimes) {
-		fmt.Printf("connect to server failed, retrying...(%d/%d)\n:", i+1, reconnectTimes)
+		log.Info().Msgf("connect to server failed, retrying...(%d/%d)\n:", i+1, reconnectTimes)
 		err := c.Connect()
 		if err == nil {
 			return nil

@@ -1,13 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/obud-dev/tunnel/pkg/model"
 	"github.com/obud-dev/tunnel/pkg/response"
 	"github.com/obud-dev/tunnel/pkg/svc"
+	"github.com/rs/zerolog/log"
 )
 
 func ApiServer(ctx *svc.ServerCtx) {
@@ -59,7 +59,7 @@ func ApiServer(ctx *svc.ServerCtx) {
 		response.Response(c, nil, err)
 	})
 
-	fmt.Printf("API Server is running on %s\n\n", ctx.Config.Api)
+	log.Info().Msgf("API Server is running on %s", ctx.Config.Api)
 	r.Run(ctx.Config.Api)
 }
 

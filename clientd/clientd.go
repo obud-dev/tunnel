@@ -5,8 +5,7 @@ import (
 )
 
 const (
-	token     = "eyJ0dW5uZWxfaWQiOiJjY2Y3MjU4Zi0wZTQxLTRlODAtYTRlYS0xOGVkODE5NWI5OGUiLCJ0b2tlbiI6IiIsInNlcnZlciI6IjAuMC4wLjA6NTQyOSJ9"
-	localAddr = "0.0.0.0:8080"
+	token = "eyJ0dW5uZWxfaWQiOiJjY2Y3MjU4Zi0wZTQxLTRlODAtYTRlYS0xOGVkODE5NWI5OGUiLCJ0b2tlbiI6IiIsInNlcnZlciI6IjAuMC4wLjA6NTQyOSJ9"
 )
 
 func main() {
@@ -14,5 +13,4 @@ func main() {
 	// 连接到公网服务器
 	client := transport.NewTcpClient(token)
 	client.Connect()
-
 }
