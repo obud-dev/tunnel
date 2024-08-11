@@ -1,14 +1,22 @@
 package main
 
 import (
+	"embed"
 	"net/http"
 
+	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/obud-dev/tunnel/pkg/model"
 	"github.com/obud-dev/tunnel/pkg/response"
 	"github.com/obud-dev/tunnel/pkg/svc"
 	"github.com/rs/zerolog/log"
 )
+
+//go:embed web/dist/*
+var staticFiles embed.FS
+
+// go:embed web/dist/index.html
+var indexHtml []byte
 
 func ApiServer(ctx *svc.ServerCtx) {
 	r := gin.Default()
@@ -57,6 +65,11 @@ func ApiServer(ctx *svc.ServerCtx) {
 		}
 		err = ctx.TunnelModel.Delete(tunnel)
 		response.Response(c, nil, err)
+	})
+
+	r.Use(static.Serve("/", static.EmbedFolder(staticFiles, "web/dist")))
+	r.NoRoute(func(c *gin.Context) {
+		c.Data(http.StatusOK, "text/html; charset=utf-8", indexHtml)
 	})
 
 	log.Info().Msgf("API Server is running on %s", ctx.Config.Api)
