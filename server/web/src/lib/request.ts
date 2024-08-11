@@ -20,3 +20,12 @@ export interface Tunnel {
   status: string;
   uptime: number;
 }
+
+export interface Route {
+  id: string;
+  tunnel_id: string;
+  hostname: string;
+  prefix: string;
+  target: string;
+  protocol: string;
+}

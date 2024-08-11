@@ -15,12 +15,12 @@ const (
 )
 
 type Route struct {
-	ID       string   `gorm:"primaryKey"`
-	TunnelID string   `gorm:"not null"` // 路由所属的隧道
-	Hostname string   `gorm:"not null"` // 域名
-	Prefix   string   // 路由前缀
-	Target   string   `gorm:"not null"` // 内网目标服务地址
-	Protocol Protocol `gorm:"not null"` // 协议
+	ID       string   `json:"id" gorm:"primaryKey"`
+	TunnelID string   `json:"tunnel_id" gorm:"not null"` // 路由所属的隧道
+	Hostname string   `json:"hostname" gorm:"not null"`  // 域名
+	Prefix   string   `json:"prefix"`                    // 路由前缀
+	Target   string   `json:"target" gorm:"not null"`    // 目标地址
+	Protocol Protocol `json:"protocol" gorm:"not null"`  // 协议
 }
 
 func (r *Route) TableName() string {

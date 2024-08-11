@@ -15,7 +15,7 @@ import (
 //go:embed web/dist/*
 var staticFiles embed.FS
 
-// go:embed web/dist/index.html
+//go:embed web/dist/index.html
 var indexHtml []byte
 
 func ApiServer(ctx *svc.ServerCtx) {
@@ -65,6 +65,11 @@ func ApiServer(ctx *svc.ServerCtx) {
 		}
 		err = ctx.TunnelModel.Delete(tunnel)
 		response.Response(c, nil, err)
+	})
+
+	api.GET("/routes", func(c *gin.Context) {
+		routes, err := ctx.RouteModel.GetRoutes()
+		response.Response(c, routes, err)
 	})
 
 	r.Use(static.Serve("/", static.EmbedFolder(staticFiles, "web/dist")))

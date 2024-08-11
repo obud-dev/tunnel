@@ -10,7 +10,7 @@ import {
 import { request, Tunnel } from "@/lib/request";
 import { useEffect, useState } from "react";
 
-function App() {
+export default () => {
   const [data, setData] = useState<Tunnel[]>([]);
   const getTunnels = async () => {
     const data = await request<Tunnel[]>("/api/tunnels");
@@ -49,6 +49,4 @@ function App() {
       </CardContent>
     </Card>
   );
-}
-
-export default App;
+};

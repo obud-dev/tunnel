@@ -1,13 +1,18 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import Home from "./routes/_index.tsx";
+import Home from "./routes/tunnels.tsx";
 import "./index.css";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import Routes from "./routes/routes.tsx";
 
 const router = createBrowserRouter([
   {
     path: "/",
     element: <Home />,
+  },
+  {
+    path: "/routes",
+    element: <Routes />,
   },
 ]);
 
