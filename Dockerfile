@@ -26,7 +26,7 @@ RUN go mod download
 COPY ./ ./
 
 # 复制从前一阶段构建的 React 项目的 dist 目录到 Go 项目
-COPY --from=react-build /app/dist ./server/dist
+COPY --from=react-build /app/dist ./server/web/dist
 
 # 进入 server 目录并打包 Go 项目
 WORKDIR /app/server
