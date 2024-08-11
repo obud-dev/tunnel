@@ -3,10 +3,10 @@ package svc
 import (
 	"net"
 
+	"github.com/glebarez/sqlite"
 	"github.com/obud-dev/tunnel/pkg/config"
 	"github.com/obud-dev/tunnel/pkg/message"
 	"github.com/obud-dev/tunnel/pkg/model"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
