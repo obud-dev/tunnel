@@ -289,6 +289,7 @@ func (s *TcpServer) HandleConnect(m message.Message, conn net.Conn) {
 	if err != nil {
 		log.Error().Err(err).Msg("Error parsing client config")
 		s.sendDisconnectResponse(conn, "Invalid config")
+		conn.Close()
 		return
 	}
 
@@ -296,10 +297,12 @@ func (s *TcpServer) HandleConnect(m message.Message, conn net.Conn) {
 	if err != nil {
 		log.Error().Err(err).Msg("Error retrieving tunnel")
 		s.sendDisconnectResponse(conn, "Tunnel not found")
+		conn.Close()
 		return
 	}
 
 	tunnel.Status = "online"
+	s.ctx.TunnelModel.Update(tunnel)
 	s.ctx.Tunnels[tunnel.ID] = conn
 
 	response := message.Message{
