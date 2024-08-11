@@ -8,7 +8,7 @@ FROM node:20.16.0 AS react-build
 WORKDIR /app
 
 # 复制 web 目录到工作目录
-COPY ./web /app
+COPY ./server/web /app
 
 # 安装依赖并构建项目
 RUN npm install && npm run build
@@ -37,9 +37,8 @@ FROM alpine
 
 WORKDIR /app
 
-# 将构建好的服务器二进制文件和dist目录复制到alpin容器中
+# 将构建好的服务器二进制文件复制到alpin容器中
 COPY --from=golang-build /app/server/server /app/server
-COPY --from=golang-build /app/server/dist /app/dist
 
 # 安装 libc6-compat 以确保与 Go 二进制兼容
 RUN apk add --no-cache libc6-compat
