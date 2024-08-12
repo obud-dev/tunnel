@@ -72,7 +72,9 @@ export default () => {
                 <TableCell className="underline">
                   <Link to={`/tunnels/${item.id}`}>{item.name}</Link>
                 </TableCell>
-                <TableCell>{item.id}</TableCell>
+                <TableCell className="underline">
+                  <Link to={`/tunnels/${item.id}`}>{item.id}</Link>
+                </TableCell>
                 <TableCell>{item.status}</TableCell>
                 <TableCell className="text-right">
                   {new Date(item.uptime * 1000).toLocaleString()}
