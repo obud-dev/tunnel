@@ -57,8 +57,9 @@ func (c *TcpClient) Connect() error {
 		Data: []byte(data),
 	})
 
-	c.readLoop()
-	return err
+	go c.readLoop()
+	go c.Heartbeat()
+	select {}
 }
 
 // readLoop handles incoming messages from the server
@@ -95,7 +96,6 @@ func (c *TcpClient) handleMessage(m *message.Message) {
 		go c.RecieveData(*m)
 	case message.MessageTypeConnect:
 		log.Info().Msg("Connected to server")
-		go c.Heartbeat()
 	case message.MessageTypeDisconnect:
 		log.Info().Msg("Disconnected from server")
 	case message.MessageTypeHeartbeat:
@@ -106,19 +106,18 @@ func (c *TcpClient) handleMessage(m *message.Message) {
 }
 
 // SendMessage sends a message to the server
-func (c *TcpClient) SendMessage(m message.Message) {
+func (c *TcpClient) SendMessage(m message.Message) error {
 	data, err := m.Marshal()
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to marshal message")
-		return
+		return err
 	}
 
 	_, err = c.conn.Write(data)
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to send message: %v", m.Type)
-		c.ReconnectToServer()
-		return
 	}
+	return err
 }
 
 // RecieveData processes data received from the server
@@ -169,18 +168,20 @@ func (c *TcpClient) Heartbeat() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		c.conn.SetWriteDeadline(time.Now().Add(heartTimeout))
+		err := c.conn.SetWriteDeadline(time.Now().Add(heartTimeout))
+		if err != nil {
+			break
+		}
 		m := message.Message{
 			Type: message.MessageTypeHeartbeat,
 			Data: []byte("ping"),
 		}
-		mBytes, _ := m.Marshal()
-		_, err := c.conn.Write(mBytes)
+		err = c.SendMessage(m)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to send heartbeat")
-			c.ReconnectToServer()
+			break
 		}
 	}
+	c.ReconnectToServer()
 }
 
 // ReconnectToServer attempts to reconnect to the TCP server
