@@ -18,7 +18,7 @@ import (
 
 // TCP Client Constants
 const (
-	heartbeatInterval = 10 * time.Second // 心跳包发送间隔
+	heartbeatInterval = 60 * time.Second // 心跳包发送间隔
 	reconnectAttempts = 3                // 最大重连尝试次数
 	reconnectInterval = 10 * time.Second // 每次重连间隔
 	heartTimeout      = 5 * time.Second  // 心跳包超时时间
@@ -57,9 +57,8 @@ func (c *TcpClient) Connect() error {
 		Data: []byte(data),
 	})
 
-	go c.readLoop()
-	go c.Heartbeat()
-	select {}
+	c.readLoop()
+	return err
 }
 
 // readLoop handles incoming messages from the server
@@ -96,6 +95,7 @@ func (c *TcpClient) handleMessage(m *message.Message) {
 		go c.RecieveData(*m)
 	case message.MessageTypeConnect:
 		log.Info().Msg("Connected to server")
+		go c.Heartbeat()
 	case message.MessageTypeDisconnect:
 		log.Info().Msg("Disconnected from server")
 	case message.MessageTypeHeartbeat:
@@ -349,6 +349,9 @@ func (s *TcpServer) handleData(m message.Message) {
 		log.Error().Err(err).Msg("Error marshalling message")
 		return
 	}
+	// 同一时刻只有一个 Goroutine 可以发送数据,避免数据混合或竞争条件
+	s.ctx.Mutex.Lock()
+	defer s.ctx.Mutex.Unlock()
 	_, err = conn.Write(mData)
 	if err != nil {
 		log.Error().Err(err).Msg("Error sending message")

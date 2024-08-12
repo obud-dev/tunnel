@@ -2,6 +2,7 @@ package svc
 
 import (
 	"net"
+	"sync"
 
 	"github.com/glebarez/sqlite"
 	"github.com/obud-dev/tunnel/pkg/config"
@@ -27,6 +28,7 @@ type ServerCtx struct {
 	Routes      []model.Route       // 路由
 	Tunnels     map[string]net.Conn // 隧道ID -> 隧道连接
 	Messages    map[string]net.Conn // 消息ID -> 外部连接
+	Mutex       sync.Mutex
 }
 
 func NewServerCtx(config config.ServerConfig) *ServerCtx {

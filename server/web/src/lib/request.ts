@@ -17,6 +17,7 @@ export const request = async <T>(
 export interface Tunnel {
   id: string;
   name: string;
+  token: string;
   status: string;
   uptime: number;
 }
