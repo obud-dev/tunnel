@@ -67,8 +67,9 @@ func ApiServer(ctx *svc.ServerCtx) {
 		response.Response(c, nil, err)
 	})
 
-	api.GET("/routes", func(c *gin.Context) {
-		routes, err := ctx.RouteModel.GetRoutes()
+	api.GET("/routes/:tid", func(c *gin.Context) {
+		tid := c.Param("tid")
+		routes, err := ctx.RouteModel.GetRoutesByTunnelID(tid)
 		response.Response(c, routes, err)
 	})
 

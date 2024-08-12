@@ -7,43 +7,50 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/components/ui/use-toast";
 import { request, Tunnel } from "@/lib/request";
 import { useEffect, useState } from "react";
-import { ClipboardDocumentListIcon } from '@heroicons/react/24/solid'
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ClipboardDocumentListIcon } from "@heroicons/react/24/solid";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Link } from "react-router-dom";
 
 export default () => {
   const [data, setData] = useState<Tunnel[]>([]);
-  const {toast} = useToast()
-  const [tunnelName, setTunnelName] = useState('');
-  const getTunnels = async () => {
+  const { toast } = useToast();
+  const [tunnelName, setTunnelName] = useState("");
+  const onGetTunnels = async () => {
     const data = await request<Tunnel[]>("/api/tunnels");
     setData(data);
   };
 
-  const copyToken = async (token:string) => {
+  const copyToken = async (token: string) => {
     await navigator.clipboard.writeText(token);
     toast({
       title: "Success !",
-      description: "The token is already copy to clipboard."
-    })
-  }
+      description: "The token is already copy to clipboard.",
+    });
+  };
 
-  const handelInputNmae = (e:React.ChangeEvent<HTMLInputElement>) => {
+  const handelInputNmae = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    setTunnelName(value)
-  }
+    setTunnelName(value);
+  };
 
-  const newTunnel = async () => {
-    
-  }
+  const newTunnel = async () => {};
 
   useEffect(() => {
-    getTunnels();
+    onGetTunnels();
   }, []);
 
   return (
@@ -62,16 +69,18 @@ export default () => {
           <TableBody>
             {data.map((item) => (
               <TableRow key={item.id}>
-                <TableCell className="underline">{item.name}</TableCell>
+                <TableCell className="underline">
+                  <Link to={`/tunnels/${item.id}`}>{item.name}</Link>
+                </TableCell>
                 <TableCell>{item.id}</TableCell>
                 <TableCell>{item.status}</TableCell>
                 <TableCell className="text-right">
                   {new Date(item.uptime * 1000).toLocaleString()}
                 </TableCell>
                 <TableCell>
-                  <ClipboardDocumentListIcon 
-                  className="size-5 cursor-pointer"
-                  onClick={() => copyToken(item.token)}
+                  <ClipboardDocumentListIcon
+                    className="size-5 cursor-pointer"
+                    onClick={() => copyToken(item.token)}
                   />
                 </TableCell>
               </TableRow>
@@ -92,7 +101,9 @@ export default () => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">Tunnel Name</Label>
+              <Label htmlFor="name" className="text-right">
+                Tunnel Name
+              </Label>
               <Input
                 id="name"
                 className="col-span-3"
@@ -102,7 +113,9 @@ export default () => {
             </div>
           </div>
           <DialogFooter>
-            <Button type="submit" onClick={newTunnel}>Submit</Button>
+            <Button type="submit" onClick={newTunnel}>
+              Submit
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

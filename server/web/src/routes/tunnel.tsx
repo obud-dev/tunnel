@@ -9,16 +9,18 @@ import {
 } from "@/components/ui/table";
 import { request, Route } from "@/lib/request";
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 
 export default () => {
+  const { id } = useParams();
   const [data, setData] = useState<Route[]>([]);
-  const getTunnels = async () => {
-    const data = await request<Route[]>("/api/routes");
+  const onGetRoutes = async () => {
+    const data = await request<Route[]>(`/api/routes/${id}`);
     setData(data);
   };
 
   useEffect(() => {
-    getTunnels();
+    onGetRoutes();
   }, []);
   return (
     <Card>

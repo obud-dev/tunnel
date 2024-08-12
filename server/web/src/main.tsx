@@ -1,33 +1,33 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import Home from "./routes/tunnels.tsx";
 import "./index.css";
 import { createBrowserRouter, Outlet, RouterProvider } from "react-router-dom";
-import Routes from "./routes/routes.tsx";
 import { Toaster } from "@/components/ui/toaster";
+import Tunnels from "./routes/tunnels.tsx";
+import Routes from "./routes/tunnel.tsx";
 
 const Layout = () => (
-  <div>
+  <>
     <Outlet />
     <Toaster />
-  </div>
+  </>
 );
 
 const router = createBrowserRouter([
   {
     path: "/",
-    element: <Layout/>,
+    element: <Layout />,
     children: [
       {
         path: "/",
-        element: <Home />,
+        element: <Tunnels />,
       },
       {
-        path: "routes",
+        path: "/tunnels/:id",
         element: <Routes />,
       },
-    ]
-  }
+    ],
+  },
 ]);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
