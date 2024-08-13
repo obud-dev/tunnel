@@ -18,7 +18,7 @@ import (
 
 // TCP Client Constants
 const (
-	heartbeatInterval = 60 * time.Second // 心跳包发送间隔
+	heartbeatInterval = 10 * time.Second // 心跳包发送间隔
 	reconnectAttempts = 3                // 最大重连尝试次数
 	reconnectInterval = 10 * time.Second // 每次重连间隔
 	heartTimeout      = 5 * time.Second  // 心跳包超时时间
@@ -173,28 +173,44 @@ func (c *TcpClient) handleHttpData(m message.Message) {
 
 // Heartbeat sends periodic heartbeat messages to the server
 func (c *TcpClient) Heartbeat() {
-	ticker := time.NewTicker(heartbeatInterval)
-	defer ticker.Stop()
+	timer := time.NewTimer(heartTimeout)
+	defer timer.Stop()
 
-	for range ticker.C {
-		err := c.conn.SetWriteDeadline(time.Now().Add(heartTimeout))
-		if err != nil {
-			break
+	for {
+		time.Sleep(heartbeatInterval)
+		done := make(chan error, 1)
+		go func() {
+			m := message.Message{
+				Type: message.MessageTypeHeartbeat,
+				Data: []byte("ping"),
+			}
+			err := c.SendMessage(m)
+			done <- err
+		}()
+		if !timer.Stop() {
+			// 如果计时器已经触发，清空通道
+			<-timer.C
 		}
-		m := message.Message{
-			Type: message.MessageTypeHeartbeat,
-			Data: []byte("ping"),
-		}
-		err = c.SendMessage(m)
-		if err != nil {
-			break
+		timer.Reset(heartTimeout)
+		select {
+		case err := <-done:
+			if err != nil {
+				c.ReconnectToServer()
+				return
+			}
+		case <-timer.C:
+			fmt.Print("timeout")
+			c.ReconnectToServer()
+			return
 		}
 	}
-	c.ReconnectToServer()
 }
 
 // ReconnectToServer attempts to reconnect to the TCP server
 func (c *TcpClient) ReconnectToServer() error {
+	if c.conn != nil {
+		c.conn.Close()
+	}
 	for i := 0; i < reconnectAttempts; i++ {
 		log.Info().Msgf("Reconnect attempt %d/%d", i+1, reconnectAttempts)
 		if err := c.Connect(); err == nil {
