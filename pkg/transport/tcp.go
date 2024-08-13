@@ -48,14 +48,15 @@ func (c *TcpClient) Connect() error {
 	}
 	log.Info().Msgf("Connecting to server: %s", c.conf.Server)
 	// Send connection message
-	data, err := c.conf.Encode()
-	if err != nil {
-		return fmt.Errorf("failed to encode config: %w", err)
-	}
-	c.SendMessage(message.Message{
+	m := message.Message{
 		Type: message.MessageTypeConnect,
-		Data: []byte(data),
-	})
+		Data: []byte(c.conf.TunnelID),
+	}
+	req, err := m.Marshal()
+	if err != nil {
+		return fmt.Errorf("failed to marshal connect message: %w", err)
+	}
+	c.conn.Write(req)
 
 	go c.readLoop()
 	go c.Heartbeat()
@@ -107,7 +108,7 @@ func (c *TcpClient) handleMessage(m *message.Message) {
 
 // SendMessage sends a message to the server
 func (c *TcpClient) SendMessage(m message.Message) error {
-	data, err := m.Marshal()
+	data, err := m.Encrypt(c.conf.Token)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to marshal message")
 		return err
@@ -123,6 +124,14 @@ func (c *TcpClient) SendMessage(m message.Message) error {
 // RecieveData processes data received from the server
 func (c *TcpClient) RecieveData(m message.Message) {
 	log.Debug().Msg("Received data from server")
+
+	// Decrypt data
+	data, err := m.Decrypt(c.conf.Token)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to decrypt message")
+		return
+	}
+	m.Data = data
 
 	// Handle the received data based on the protocol
 	switch m.Protocol {
@@ -254,7 +263,9 @@ func (s *TcpServer) processMessage(messageStr []byte, conn net.Conn) {
 		// 从外部接收到的数据，转发到内部
 		messageId := utils.GenerateID()
 		log.Debug().Msgf("New message ID: %s", messageId)
-		s.ctx.Messages[messageId] = conn
+		s.ctx.Messages[messageId] = &svc.ActiveTunnel{
+			Conn: conn,
+		}
 		s.handleData(message.Message{
 			Type: message.MessageTypeData,
 			Data: messageStr,
@@ -267,14 +278,7 @@ func (s *TcpServer) processMessage(messageStr []byte, conn net.Conn) {
 	case message.MessageTypeConnect:
 		s.HandleConnect(*m, conn)
 	case message.MessageTypeData:
-		messageIds := make([]string, 0)
-		for id := range s.ctx.Messages {
-			messageIds = append(messageIds, id)
-		}
-		log.Debug().Msgf("Messages %v", messageIds)
-		s.ctx.Messages[m.Id].Write(m.Data)
-		s.ctx.Messages[m.Id].Close()
-		delete(s.ctx.Messages, m.Id)
+		s.sendToVisitor(*m)
 	case message.MessageTypeDisconnect:
 		log.Info().Msg("Client disconnected")
 	case message.MessageTypeHeartbeat:
@@ -286,15 +290,9 @@ func (s *TcpServer) processMessage(messageStr []byte, conn net.Conn) {
 
 // handleConnect manages the connection request from the client
 func (s *TcpServer) HandleConnect(m message.Message, conn net.Conn) {
-	clientConfig, err := config.ParseFromEncoded(string(m.Data))
-	if err != nil {
-		log.Error().Err(err).Msg("Error parsing client config")
-		s.sendDisconnectResponse(conn, "Invalid config")
-		conn.Close()
-		return
-	}
+	TunnelID := string(m.Data)
 
-	tunnel, err := s.ctx.TunnelModel.GetTunnelByID(clientConfig.TunnelID)
+	tunnel, err := s.ctx.TunnelModel.GetTunnelByID(TunnelID)
 	if err != nil {
 		log.Error().Err(err).Msg("Error retrieving tunnel")
 		s.sendDisconnectResponse(conn, "Tunnel not found")
@@ -304,16 +302,19 @@ func (s *TcpServer) HandleConnect(m message.Message, conn net.Conn) {
 
 	tunnel.Status = "online"
 	s.ctx.TunnelModel.Update(tunnel)
-	s.ctx.Tunnels[tunnel.ID] = conn
+	s.ctx.Tunnels[tunnel.ID] = &svc.ActiveTunnel{
+		Conn:  conn,
+		Token: tunnel.Token,
+	}
 
 	response := message.Message{
 		Type: message.MessageTypeConnect,
-		Data: []byte(fmt.Sprintf("Connected to tunnel %s", clientConfig.TunnelID)),
+		Data: []byte(fmt.Sprintf("Connected to tunnel %s", TunnelID)),
 	}
 	if err := s.sendResponse(conn, response); err != nil {
 		log.Error().Err(err).Msg("Failed to send response")
 	}
-	log.Info().Msgf("Client connected: %s", clientConfig.TunnelID)
+	log.Info().Msgf("Client connected: %s", TunnelID)
 }
 
 // handleData processes the data from the client
@@ -344,8 +345,9 @@ func (s *TcpServer) handleData(m message.Message) {
 		return
 	}
 
-	conn := s.ctx.Tunnels[tunnelID]
-	mData, err := m.Marshal()
+	tunnel := s.ctx.Tunnels[tunnelID]
+	s.ctx.Messages[m.Id].Token = tunnel.Token
+	mData, err := m.Encrypt(tunnel.Token)
 	if err != nil {
 		log.Error().Err(err).Msg("Error marshalling message")
 		return
@@ -353,7 +355,7 @@ func (s *TcpServer) handleData(m message.Message) {
 	// 同一时刻只有一个 Goroutine 可以发送数据,避免数据混合或竞争条件
 	s.ctx.Mutex.Lock()
 	defer s.ctx.Mutex.Unlock()
-	_, err = conn.Write(mData)
+	_, err = tunnel.Conn.Write(mData)
 	if err != nil {
 		log.Error().Err(err).Msg("Error sending message")
 		return
@@ -391,4 +393,25 @@ func (s *TcpServer) sendDisconnectResponse(conn net.Conn, reason string) {
 		Data: []byte(reason),
 	}
 	s.sendResponse(conn, response)
+}
+
+// sendToVisitor sends client response to visitor
+func (s *TcpServer) sendToVisitor(m message.Message) {
+	defer delete(s.ctx.Messages, m.Id)
+
+	if _, ok := s.ctx.Messages[m.Id]; !ok {
+		log.Error().Msg("tunnel not found")
+		return
+	}
+
+	conn := s.ctx.Messages[m.Id].Conn
+	token := s.ctx.Messages[m.Id].Token
+
+	data, err := m.Decrypt(token)
+	if err != nil {
+		fmt.Println("Error to decrypt data:", err)
+		return
+	}
+	conn.Write(data)
+	conn.Close()
 }

@@ -42,7 +42,7 @@ export default () => {
     });
   };
 
-  const handelInputNmae = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handelInputName = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setTunnelName(value);
   };
@@ -110,7 +110,7 @@ export default () => {
                 id="name"
                 className="col-span-3"
                 value={tunnelName}
-                onChange={handelInputNmae}
+                onChange={handelInputName}
               />
             </div>
           </div>

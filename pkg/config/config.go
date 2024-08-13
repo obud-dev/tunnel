@@ -7,7 +7,7 @@ import (
 
 type ClientConfig struct {
 	TunnelID string `json:"tunnel_id"` // 隧道 ID
-	Token    string `json:"token"`     // 隧道 令牌
+	Token    string `json:"token"`     // 隧道 令牌,密钥
 	Server   string `json:"server"`    // 服务器地址
 }
 

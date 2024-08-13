@@ -11,6 +11,7 @@ import (
 )
 
 func main() {
+	host := os.Getenv("Host")
 	listenOn := os.Getenv("ListenOn")
 	api := os.Getenv("Api")
 	user := os.Getenv("User")
@@ -18,6 +19,7 @@ func main() {
 
 	var server svc.Server
 	svcCtx := svc.NewServerCtx(config.ServerConfig{
+		Host:     host,
 		ListenOn: listenOn,
 		Api:      api,
 		User:     user,
@@ -25,7 +27,7 @@ func main() {
 	})
 
 	// 插入测试数据tunnel
-	data := &model.Tunnel{ID: "ccf7258f-0e41-4e80-a4ea-18ed8195b98e", Name: "test", Uptime: time.Now().Unix(), Token: "1234abc"}
+	data := &model.Tunnel{ID: "ccf7258f-0e41-4e80-a4ea-18ed8195b98e", Name: "test", Uptime: time.Now().Unix(), Token: "1234abcd5678ef901234abcd"}
 	_, e := svcCtx.TunnelModel.GetTunnelByID(data.ID)
 	if e != nil {
 		svcCtx.TunnelModel.Update(data)

@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	DefaultHost     = "0.0.0.0"
 	DefaultListenOn = ":5429"
 	DefaultApi      = ":8000"
 )
@@ -21,18 +22,26 @@ type Server interface {
 	HandleConnect(m message.Message, conn net.Conn)
 }
 
+type ActiveTunnel struct {
+	Conn  net.Conn
+	Token string
+}
+
 type ServerCtx struct {
 	Config      config.ServerConfig
 	TunnelModel model.TunnelModel
 	RouteModel  model.RouteModel
-	Routes      []model.Route       // 路由
-	Tunnels     map[string]net.Conn // 隧道ID -> 隧道连接
-	Messages    map[string]net.Conn // 消息ID -> 外部连接
+	Routes      []model.Route            // 路由
+	Tunnels     map[string]*ActiveTunnel // 隧道ID -> 隧道连接
+	Messages    map[string]*ActiveTunnel // 消息ID -> 外部连接
 	Mutex       sync.Mutex
 }
 
 func NewServerCtx(config config.ServerConfig) *ServerCtx {
 
+	if config.Host == "" {
+		config.Host = DefaultHost
+	}
 	if config.ListenOn == "" {
 		config.ListenOn = DefaultListenOn
 	}
@@ -67,7 +76,7 @@ func NewServerCtx(config config.ServerConfig) *ServerCtx {
 		TunnelModel: tunnelModel,
 		RouteModel:  routeModel,
 		Routes:      routes,
-		Tunnels:     map[string]net.Conn{},
-		Messages:    map[string]net.Conn{},
+		Tunnels:     map[string]*ActiveTunnel{},
+		Messages:    map[string]*ActiveTunnel{},
 	}
 }
