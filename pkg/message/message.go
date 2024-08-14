@@ -41,7 +41,7 @@ func Unmarshal(data []byte) (*Message, error) {
 	return m, nil
 }
 
-// 使用AES-CTR加解密
+// 使用AES-GCM加解密
 func (m *Message) Encrypt(key string) ([]byte, error) {
 	if len(key) != 16 && len(key) != 24 && len(key) != 32 {
 		return nil, fmt.Errorf("invalid key size: must be 16, 24, or 32 bytes")
@@ -50,15 +50,19 @@ func (m *Message) Encrypt(key string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// 创建一个随机的IV
-	ciphertext := make([]byte, aes.BlockSize+len(m.Data))
-	iv := ciphertext[:aes.BlockSize]
-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+	// 使用AES-GCM
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
 		return nil, err
 	}
-	// 加密
-	stream := cipher.NewCTR(block, iv)
-	stream.XORKeyStream(ciphertext[aes.BlockSize:], m.Data)
+	// 生成随机的nonce
+	nonce := make([]byte, aesGCM.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+	// 加密并附加认证标签
+	ciphertext := aesGCM.Seal(nonce, nonce, m.Data, nil)
+
 	m.Data = ciphertext
 	return m.Marshal()
 }
@@ -71,12 +75,19 @@ func (m *Message) Decrypt(key string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	iv := m.Data[:aes.BlockSize]
-	ciphertext := m.Data[aes.BlockSize:]
-
+	// 使用AES-GCM
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	// 提取nonce
+	nonceSize := aesGCM.NonceSize()
+	nonce, ciphertext := m.Data[:nonceSize], m.Data[nonceSize:]
 	// 解密
-	stream := cipher.NewCTR(block, iv)
-	stream.XORKeyStream(ciphertext, ciphertext)
-	return ciphertext, nil
+	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("token authentication failed or message has falsified")
+	}
+
+	return plaintext, nil
 }
