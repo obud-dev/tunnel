@@ -1,19 +1,19 @@
-export const request = async (
+export const request = async <T> (
   url: string,
   options?: RequestInit
-): Promise<Resp> => {
+): Promise<Resp<T>> => {
   const response = await fetch(url, options);
   if (!response.ok) {
     Promise.reject(response.statusText);
   }
 
-  const resp:Resp = await response.json();
+  const resp = await response.json();
   return Promise.resolve(resp);
 };
 
-export interface Resp {
+export interface Resp<T> {
   code: number;
-  data: any;
+  data: T;
   msg: string;
 }
 

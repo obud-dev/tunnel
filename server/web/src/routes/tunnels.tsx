@@ -33,14 +33,14 @@ export default () => {
   const { toast } = useToast();
   const [tunnelName, setTunnelName] = useState("");
   const onGetTunnels = async () => {
-    const resp = await request("/api/tunnels");
+    const resp = await request<Tunnel[]>("/api/tunnels");
     if(resp && resp.code===0) {
       setData(resp.data);
     }
   };
 
   const copyToken = async (id: string) => {
-    const resp = await request(`/api/token/${id}`);
+    const resp = await request<string>(`/api/token/${id}`);
     if(resp && resp.code===0) {
       await navigator.clipboard.writeText(resp.data);
       toast({
