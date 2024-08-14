@@ -65,7 +65,7 @@ export default () => {
       id: generateId(),
       name: tunnelName,
       token: generateToken(16),
-      uptime: Date.now(),
+      uptime: Math.floor(Date.now() / 1000),
       status: "offline",
     }
     const resp = await request("/api/tunnels",{
