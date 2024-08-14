@@ -14,6 +14,7 @@ import { ClipboardDocumentListIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -24,22 +25,34 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Link } from "react-router-dom";
+import { generateId, generateToken } from "@/lib/utils";
+import React from "react";
 
 export default () => {
   const [data, setData] = useState<Tunnel[]>([]);
   const { toast } = useToast();
   const [tunnelName, setTunnelName] = useState("");
   const onGetTunnels = async () => {
-    const data = await request<Tunnel[]>("/api/tunnels");
-    setData(data);
+    const resp = await request("/api/tunnels");
+    if(resp && resp.code===0) {
+      setData(resp.data);
+    }
   };
 
-  const copyToken = async (token: string) => {
-    await navigator.clipboard.writeText(token);
-    toast({
-      title: "Success !",
-      description: "The token is already copy to clipboard.",
-    });
+  const copyToken = async (id: string) => {
+    const resp = await request(`/api/token/${id}`);
+    if(resp && resp.code===0) {
+      await navigator.clipboard.writeText(resp.data);
+      toast({
+        title: "Success !",
+        description: "The install token is already copy to clipboard.",
+      });
+    } else {
+      toast({
+        title: "Failed !",
+        description: resp.msg,
+      });
+    }
   };
 
   const handelInputName = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -47,7 +60,31 @@ export default () => {
     setTunnelName(value);
   };
 
-  const newTunnel = async () => {};
+  const newTunnel = async () => {
+    const tunnel:Tunnel = {
+      id: generateId(),
+      name: tunnelName,
+      token: generateToken(16),
+      uptime: Date.now(),
+      status: "offline",
+    }
+    const resp = await request("/api/tunnels",{
+      method: "POST",
+      body: JSON.stringify(tunnel),
+    })
+    if(resp && resp.code === 0) {
+      onGetTunnels();
+      toast({
+        title: "Success !",
+        description: "tunnel add success.",
+      });
+    } else {
+      toast({
+        title: "Failed !",
+        description: resp.msg,
+      });
+    }
+  };
 
   useEffect(() => {
     onGetTunnels();
@@ -63,7 +100,7 @@ export default () => {
               <TableHead>Tunnel ID</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Uptime</TableHead>
-              <TableHead>Token</TableHead>
+              <TableHead>Install Token</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -82,7 +119,7 @@ export default () => {
                 <TableCell>
                   <ClipboardDocumentListIcon
                     className="size-5 cursor-pointer"
-                    onClick={() => copyToken(item.token)}
+                    onClick={() => copyToken(item.id)}
                   />
                 </TableCell>
               </TableRow>
@@ -115,9 +152,11 @@ export default () => {
             </div>
           </div>
           <DialogFooter>
-            <Button type="submit" onClick={newTunnel}>
-              Submit
-            </Button>
+            <DialogClose>
+              <Button type="submit" onClick={newTunnel}>
+                Submit
+              </Button>
+            </DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>

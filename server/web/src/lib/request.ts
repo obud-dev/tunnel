@@ -1,18 +1,21 @@
-export const request = async <T>(
+export const request = async (
   url: string,
   options?: RequestInit
-): Promise<T> => {
+): Promise<Resp> => {
   const response = await fetch(url, options);
   if (!response.ok) {
-    throw new Error(response.statusText);
+    Promise.reject(response.statusText);
   }
 
-  const { code, data, msg } = await response.json();
-  if (code === 0) {
-    return data;
-  }
-  return Promise.reject(msg);
+  const resp:Resp = await response.json();
+  return Promise.resolve(resp);
 };
+
+export interface Resp {
+  code: number;
+  data: any;
+  msg: string;
+}
 
 export interface Tunnel {
   id: string;

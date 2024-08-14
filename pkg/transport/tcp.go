@@ -18,7 +18,7 @@ import (
 
 // TCP Client Constants
 const (
-	heartbeatInterval = 10 * time.Second // 心跳包发送间隔
+	heartbeatInterval = 60 * time.Second // 心跳包发送间隔
 	reconnectAttempts = 3                // 最大重连尝试次数
 	reconnectInterval = 10 * time.Second // 每次重连间隔
 	heartTimeout      = 5 * time.Second  // 心跳包超时时间
@@ -199,7 +199,7 @@ func (c *TcpClient) Heartbeat() {
 				return
 			}
 		case <-timer.C:
-			fmt.Print("timeout")
+			fmt.Print("Send heartbeat timeout")
 			c.ReconnectToServer()
 			return
 		}

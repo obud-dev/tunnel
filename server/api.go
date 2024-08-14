@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
+	"github.com/obud-dev/tunnel/pkg/config"
 	"github.com/obud-dev/tunnel/pkg/model"
 	"github.com/obud-dev/tunnel/pkg/response"
 	"github.com/obud-dev/tunnel/pkg/svc"
@@ -71,6 +72,26 @@ func ApiServer(ctx *svc.ServerCtx) {
 		tid := c.Param("tid")
 		routes, err := ctx.RouteModel.GetRoutesByTunnelID(tid)
 		response.Response(c, routes, err)
+	})
+
+	api.GET("/token/:tid", func(c *gin.Context) {
+		tid := c.Param("tid")
+		tunnel, err := ctx.TunnelModel.GetTunnelByID(tid)
+		if err != nil {
+			response.Response(c, nil, err)
+			return
+		}
+		config := &config.ClientConfig{
+			TunnelID: tunnel.ID,
+			Token:    tunnel.Token,
+			Server:   ctx.Config.Host + ctx.Config.ListenOn,
+		}
+		token, err := config.Encode()
+		if err != nil {
+			response.Response(c, nil, err)
+			return
+		}
+		response.Response(c, token, err)
 	})
 
 	r.Use(static.Serve("/", static.EmbedFolder(staticFiles, "web/dist")))
