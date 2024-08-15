@@ -1,4 +1,4 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "~/components/ui/card";
 import {
   Table,
   TableBody,
@@ -6,8 +6,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { request, Route } from "@/lib/request";
+} from "~/components/ui/table";
+import { request, Route } from "~/lib/request";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -16,7 +16,7 @@ export default () => {
   const [data, setData] = useState<Route[]>([]);
   const onGetRoutes = async () => {
     const resp = await request<Route[]>(`/api/routes/${id}`);
-    if(resp && resp.code === 0){
+    if (resp && resp.code === 0) {
       setData(resp.data);
     }
   };
