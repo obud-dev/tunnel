@@ -94,6 +94,11 @@ func ApiServer(ctx *svc.ServerCtx) {
 		response.Response(c, token, err)
 	})
 
+	api.GET("/server/info", func(c *gin.Context) {
+		server, err := ctx.ServerModel.GetServer()
+		response.Response(c, server, err)
+	})
+
 	r.Use(static.Serve("/", static.EmbedFolder(staticFiles, "web/dist")))
 	r.NoRoute(func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", indexHtml)

@@ -31,6 +31,7 @@ type ServerCtx struct {
 	Config      config.ServerConfig
 	TunnelModel model.TunnelModel
 	RouteModel  model.RouteModel
+	ServerModel model.ServerModel
 	Routes      []model.Route            // 路由
 	Tunnels     map[string]*ActiveTunnel // 隧道ID -> 隧道连接
 	Messages    map[string]*ActiveTunnel // 消息ID -> 外部连接
@@ -63,8 +64,17 @@ func NewServerCtx(config config.ServerConfig) *ServerCtx {
 	}
 	db.AutoMigrate(&model.Tunnel{})
 	db.AutoMigrate(&model.Route{})
+	db.AutoMigrate(&model.Server{})
 	tunnelModel := model.NewTunnelModel(db)
 	routeModel := model.NewRouteModel(db)
+	serverModel := model.NewServerModel(db)
+
+	serverModel.Update(&model.Server{
+		Host:     config.Host,
+		ListenOn: config.ListenOn,
+		Api:      config.Api,
+		Version:  "v1.0.0",
+	})
 
 	routes, err := routeModel.GetRoutes()
 	if err != nil {
@@ -75,6 +85,7 @@ func NewServerCtx(config config.ServerConfig) *ServerCtx {
 		Config:      config,
 		TunnelModel: tunnelModel,
 		RouteModel:  routeModel,
+		ServerModel: serverModel,
 		Routes:      routes,
 		Tunnels:     map[string]*ActiveTunnel{},
 		Messages:    map[string]*ActiveTunnel{},
