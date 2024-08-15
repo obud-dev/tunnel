@@ -93,7 +93,7 @@ export default () => {
   }, []);
 
   return (
-    <Card>
+    <Card className="border-none">
       <CardHeader>
         <CardTitle>Tunnels</CardTitle>
       </CardHeader>

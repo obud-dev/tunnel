@@ -8,12 +8,16 @@ import Routes from "./routes/tunnel.tsx";
 
 const Layout = () => (
   <>
-    <header className="h-14 bg-slate-900 text-white flex items-center px-8 italic font-bold">
-      Tunnel
+    <header className="h-14 bg-slate-900 text-white flex justify-center px-8 italic font-bold">
+      <div className="max-w-7xl w-full justify-between h-full flex items-center">
+        <span className="text-lg">Tunnel</span>
+      </div>
     </header>
-    <main className="p-4">
-      <Outlet />
-    </main>
+    <div className="flex justify-center">
+      <main className="p-4 w-full max-w-7xl ">
+        <Outlet />
+      </main>
+    </div>
     <Toaster />
   </>
 );
