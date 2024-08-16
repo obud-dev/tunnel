@@ -23,8 +23,9 @@ type Server interface {
 }
 
 type ActiveTunnel struct {
-	Conn  net.Conn
-	Token string
+	Conn    net.Conn
+	Token   string
+	Channel chan []byte
 }
 
 type ServerCtx struct {
