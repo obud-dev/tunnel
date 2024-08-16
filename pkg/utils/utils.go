@@ -7,8 +7,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"runtime"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 func GetAvailablePort(min int) (int, error) {
@@ -36,4 +40,15 @@ func GetHostFromHttpMessage(m []byte) string {
 		return ""
 	}
 	return req.Host
+}
+
+func PrintMemoryUsage() {
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	log.Info().Msgf("Alloc = %v MiB TotalAlloc = %v MiB Sys = %v MiB NumGC = %v", bToMb(m.Alloc), bToMb(m.TotalAlloc), bToMb(m.Sys), m.NumGC)
+}
+
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }
