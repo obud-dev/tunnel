@@ -1,4 +1,4 @@
-import { Card, CardContent } from "~/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import {
   Table,
   TableBody,
@@ -25,7 +25,10 @@ export default () => {
     onGetRoutes();
   }, []);
   return (
-    <Card>
+    <Card className="border-none">
+      <CardHeader>
+        <CardTitle>Routes</CardTitle>
+      </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
