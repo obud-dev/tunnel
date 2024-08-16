@@ -15,9 +15,9 @@ export default () => {
   const { id } = useParams();
   const [data, setData] = useState<Route[]>([]);
   const onGetRoutes = async () => {
-    const resp = await request<Route[]>(`/api/routes/${id}`);
-    if (resp && resp.code === 0) {
-      setData(resp.data);
+    const { code,data } = await request<Route[]>(`/api/routes/${id}`);
+    if (code === 0) {
+      setData(data);
     }
   };
 

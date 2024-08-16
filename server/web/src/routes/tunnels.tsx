@@ -42,19 +42,16 @@ export default () => {
   };
 
   const copyToken = async (id: string) => {
-    const resp = await request<string>(`/api/token/${id}`);
-    if (resp && resp.code === 0) {
-      await navigator.clipboard.writeText(resp.data);
+    const { code, data, msg } = await request<string>(`/api/token/${id}`);
+    if (code === 0) {
+      await navigator.clipboard.writeText(data);
       toast({
         title: "Success !",
         description: "The install token is already copy to clipboard.",
       });
-    } else {
-      toast({
-        title: "Failed !",
-        description: resp.msg,
-      });
+      return;
     }
+    toast({ title: "Failed !", description: msg });
   };
 
   const handelInputName = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,22 +67,19 @@ export default () => {
       uptime: Math.floor(Date.now() / 1000),
       status: "offline",
     };
-    const resp = await request("/api/tunnels", {
+    const { code, msg } = await request("/api/tunnels", {
       method: "POST",
       body: JSON.stringify(tunnel),
     });
-    if (resp && resp.code === 0) {
+    if (code === 0) {
       onGetTunnels();
       toast({
         title: "Success !",
         description: "tunnel add success.",
       });
-    } else {
-      toast({
-        title: "Failed !",
-        description: resp.msg,
-      });
-    }
+      return;
+    } 
+    toast({ title: "Failed !", description: msg });
   };
 
   useEffect(() => {
