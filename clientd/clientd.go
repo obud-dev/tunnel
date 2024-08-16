@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/obud-dev/tunnel/pkg/transport"
+	"github.com/obud-dev/tunnel/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
 
@@ -10,6 +11,8 @@ const (
 )
 
 func main() {
+
+	go utils.PrintMemoryUsage()
 
 	// 连接到公网服务器
 	client, err := transport.NewTcpClient(token)

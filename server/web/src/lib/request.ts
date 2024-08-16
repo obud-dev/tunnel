@@ -1,4 +1,4 @@
-export const request = async <T> (
+export const request = async <T>(
   url: string,
   options?: RequestInit
 ): Promise<Resp<T>> => {
@@ -18,11 +18,11 @@ export interface Resp<T> {
 }
 
 export interface Tunnel {
-  id: string;
+  id?: string;
   name: string;
-  token: string;
-  status: string;
-  uptime: number;
+  token?: string;
+  status?: string;
+  uptime?: number;
 }
 
 export interface Route {

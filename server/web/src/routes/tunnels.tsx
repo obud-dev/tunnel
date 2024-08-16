@@ -10,7 +10,13 @@ import {
 import { useToast } from "~/components/ui/use-toast";
 import { request, Tunnel } from "~/lib/request";
 import { useEffect, useState } from "react";
-import { ClipboardDocumentListIcon } from "@heroicons/react/24/solid";
+import {
+  ArrowPathIcon,
+  ClipboardDocumentListIcon,
+  EllipsisVerticalIcon,
+  PencilSquareIcon,
+  TrashIcon,
+} from "@heroicons/react/24/solid";
 import { Button } from "~/components/ui/button";
 import {
   Dialog,
@@ -25,8 +31,13 @@ import {
 import { Label } from "~/components/ui/label";
 import { Input } from "~/components/ui/input";
 import { Link } from "react-router-dom";
-import { generateId, generateToken } from "~/lib/utils";
 import React from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 
 export default () => {
   const [data, setData] = useState<Tunnel[]>([]);
@@ -41,17 +52,55 @@ export default () => {
     toast({ title: "Failed !", description: msg });
   };
 
-  const copyToken = async (id: string) => {
-    const { code, data, msg } = await request<string>(`/api/token/${id}`);
-    if (code === 0) {
-      await navigator.clipboard.writeText(data);
+  const onCopyToken = async (id: string) => {
+    const resp = await request<string>(`/api/token/${id}`);
+    if (resp && resp.code === 0) {
+      await navigator.clipboard.writeText(resp.data);
       toast({
         title: "Success !",
         description: "The install token is already copy to clipboard.",
       });
-      return;
+    } else {
+      toast({
+        title: "Failed !",
+        description: resp.msg,
+      });
     }
-    toast({ title: "Failed !", description: msg });
+  };
+
+  const onDeleted = async (id: string) => {
+    const resp = await request(`/api/tunnels/${id}`, {
+      method: "DELETE",
+    });
+    if (resp && resp.code === 0) {
+      onGetTunnels();
+      toast({
+        title: "Success !",
+        description: "tunnel deleted success.",
+      });
+    } else {
+      toast({
+        title: "Failed !",
+        description: resp.msg,
+      });
+    }
+  };
+
+  const onRefreshToken = async (id: string) => {
+    const resp = await request(`/api/tunnels/${id}/refreshtoken`, {
+      method: "POST",
+    });
+    if (resp && resp.code === 0) {
+      toast({
+        title: "Success !",
+        description: "tunnel token refresh success.",
+      });
+    } else {
+      toast({
+        title: "Failed !",
+        description: resp.msg,
+      });
+    }
   };
 
   const handelInputName = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,26 +109,23 @@ export default () => {
   };
 
   const newTunnel = async () => {
-    const tunnel: Tunnel = {
-      id: generateId(),
-      name: tunnelName,
-      token: generateToken(16),
-      uptime: Math.floor(Date.now() / 1000),
-      status: "offline",
-    };
-    const { code, msg } = await request("/api/tunnels", {
+    const tunnel: Tunnel = { name: tunnelName };
+    const resp = await request("/api/tunnels", {
       method: "POST",
       body: JSON.stringify(tunnel),
     });
-    if (code === 0) {
+    if (resp && resp.code === 0) {
       onGetTunnels();
       toast({
         title: "Success !",
         description: "tunnel add success.",
       });
-      return;
-    } 
-    toast({ title: "Failed !", description: msg });
+    } else {
+      toast({
+        title: "Failed !",
+        description: resp.msg,
+      });
+    }
   };
 
   useEffect(() => {
@@ -95,11 +141,11 @@ export default () => {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
+              <TableHead className="whitespace-nowrap">Tunnel Name</TableHead>
               <TableHead>Tunnel ID</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Uptime</TableHead>
-              <TableHead>Install Token</TableHead>
+              <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -108,18 +154,57 @@ export default () => {
                 <TableCell className="underline">
                   <Link to={`/tunnels/${item.id}`}>{item.name}</Link>
                 </TableCell>
-                <TableCell className="underline">
+                <TableCell className="underline  max-w-60 whitespace-nowrap text-ellipsis overflow-hidden">
                   <Link to={`/tunnels/${item.id}`}>{item.id}</Link>
                 </TableCell>
                 <TableCell>{item.status}</TableCell>
-                <TableCell>
-                  {new Date(item.uptime * 1000).toLocaleString()}
+                <TableCell className="whitespace-nowrap">
+                  {item.uptime
+                    ? new Date(item.uptime * 1000).toLocaleString()
+                    : "--"}
                 </TableCell>
-                <TableCell>
-                  <ClipboardDocumentListIcon
-                    className="size-5 cursor-pointer"
-                    onClick={() => copyToken(item.id)}
-                  />
+                <TableCell className="flex">
+                  <Button
+                    variant="ghost"
+                    className="rounded-full"
+                    size="icon"
+                    onClick={() => onCopyToken(item.id as string)}
+                  >
+                    <ClipboardDocumentListIcon className="size-5" />
+                  </Button>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="rounded-full"
+                        size="icon"
+                      >
+                        <EllipsisVerticalIcon className="size-5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem
+                        onClick={() => onRefreshToken(item.id as string)}
+                      >
+                        <PencilSquareIcon className="h-4 w-4 mr-2" />
+                        <span>Edit</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => onRefreshToken(item.id as string)}
+                      >
+                        <ArrowPathIcon className="h-4 w-4 mr-2" />
+                        <span>Refresh Token</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => onDeleted(item.id as string)}
+                      >
+                        <TrashIcon className="h-4 w-4 mr-2" />
+                        <span>Deleted</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             ))}

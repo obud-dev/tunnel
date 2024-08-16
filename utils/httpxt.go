@@ -3,9 +3,12 @@ package main
 import (
 	"flag"
 	"net/http"
+	"os"
+	"runtime"
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -38,6 +41,14 @@ func main() {
 		return
 	}
 
+	// 打印内存使用情况
+	go func() {
+		for {
+			printMemoryUsage()
+			time.Sleep(5 * time.Second)
+		}
+	}()
+
 	// 使用 WaitGroup 等待所有请求完成
 	var wg sync.WaitGroup
 
@@ -55,4 +66,15 @@ func main() {
 
 	// 等待所有线程完成
 	wg.Wait()
+}
+
+func printMemoryUsage() {
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	log.Info().Msgf("Alloc = %v MiB TotalAlloc = %v MiB Sys = %v MiB NumGC = %v", bToMb(m.Alloc), bToMb(m.TotalAlloc), bToMb(m.Sys), m.NumGC)
+}
+
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }

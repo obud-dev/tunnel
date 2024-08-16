@@ -10,6 +10,7 @@ import (
 	"github.com/obud-dev/tunnel/pkg/model"
 	"github.com/obud-dev/tunnel/pkg/response"
 	"github.com/obud-dev/tunnel/pkg/svc"
+	"github.com/obud-dev/tunnel/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
 
@@ -66,6 +67,19 @@ func ApiServer(ctx *svc.ServerCtx) {
 		}
 		err = ctx.TunnelModel.Delete(tunnel)
 		response.Response(c, nil, err)
+	})
+
+	api.POST("/tunnels/:id/refreshtoken", func(c *gin.Context) {
+		id := c.Param("id")
+		tunnel, err := ctx.TunnelModel.GetTunnelByID(id)
+		if err != nil {
+			response.Response(c, nil, err)
+			return
+		}
+		token := utils.GenerateID()
+		tunnel.Token = token
+		err = ctx.TunnelModel.Update(tunnel)
+		response.Response(c, token, err)
 	})
 
 	api.GET("/routes/:tid", func(c *gin.Context) {
