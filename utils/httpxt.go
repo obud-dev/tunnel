@@ -3,19 +3,21 @@ package main
 import (
 	"flag"
 	"net/http"
-	"os"
-	"runtime"
 	"sync"
 	"time"
 
-	"github.com/rs/zerolog"
+	"github.com/obud-dev/tunnel/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
+
+var client = &http.Client{
+	Timeout: time.Second * 10, // 设置超时时间
+}
 
 // makeRequest 发起 HTTP GET 请求并打印请求时间和响应状态
 func makeRequest(url string, t, n int) {
 	start := time.Now()
-	resp, err := http.Get(url)
+	resp, err := client.Get(url)
 	duration := time.Since(start)
 
 	if err != nil {
@@ -41,18 +43,8 @@ func main() {
 		return
 	}
 
-	// 打印内存使用情况
-	go func() {
-		log.Logger = log.Output(zerolog.ConsoleWriter{
-			Out:        os.Stdout,
-			NoColor:    false,        // 启用或禁用默认的颜色
-			TimeFormat: time.RFC3339, // 时间格式
-		})
-		for {
-			printMemoryUsage()
-			time.Sleep(5 * time.Second)
-		}
-	}()
+	utils.InitLogger()
+	go utils.PrintMemoryUsage()
 
 	// 使用 WaitGroup 等待所有请求完成
 	var wg sync.WaitGroup
@@ -71,15 +63,4 @@ func main() {
 
 	// 等待所有线程完成
 	wg.Wait()
-}
-
-func printMemoryUsage() {
-
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	log.Info().Msgf("Alloc = %v MiB TotalAlloc = %v MiB Sys = %v MiB NumGC = %v", bToMb(m.Alloc), bToMb(m.TotalAlloc), bToMb(m.Sys), m.NumGC)
-}
-
-func bToMb(b uint64) uint64 {
-	return b / 1024 / 1024
 }
