@@ -184,9 +184,7 @@ export default () => {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      <DropdownMenuItem
-                        onClick={() => onRefreshToken(item.id as string)}
-                      >
+                      <DropdownMenuItem onClick={() => {}}>
                         <PencilSquareIcon className="h-4 w-4 mr-2" />
                         <span>Edit</span>
                       </DropdownMenuItem>
