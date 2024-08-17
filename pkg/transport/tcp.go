@@ -11,7 +11,6 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/obud-dev/tunnel/pkg/config"
-	"github.com/obud-dev/tunnel/pkg/errors"
 	"github.com/obud-dev/tunnel/pkg/message"
 	"github.com/obud-dev/tunnel/pkg/model"
 	"github.com/obud-dev/tunnel/pkg/svc"
@@ -123,8 +122,6 @@ func (c *TcpClient) SendMessage(m message.Message) error {
 
 // sendToServer send data to server
 func (c *TcpClient) sendToServer() {
-	defer close(c.channel)
-
 	for message := range c.channel {
 		_, err := c.conn.Write(message)
 		if err != nil {
@@ -167,13 +164,14 @@ func (c *TcpClient) handleHttpData(m message.Message) {
 		return
 	}
 	conn.Write(m.Data)
-	for {
+	go func() {
+		defer conn.Close()
+
 		buf := make([]byte, 2048)
 		n, err := conn.Read(buf)
 		if err != nil {
 			log.Error().Err(err).Msg("Error reading from target")
-			conn.Close()
-			break
+			return
 		}
 		log.Info().Msg("Received response")
 		// 通过tunnel发送本地响应到服务器
@@ -182,7 +180,7 @@ func (c *TcpClient) handleHttpData(m message.Message) {
 			Data: buf[:n],
 			Type: message.MessageTypeData,
 		})
-	}
+	}()
 }
 
 // Heartbeat sends periodic heartbeat messages to the server
@@ -270,6 +268,19 @@ func (s *TcpServer) Listen() error {
 func (s *TcpServer) handleConn(conn net.Conn) {
 	log.Info().Msg("Connection established with client")
 
+	messageId := utils.GenerateID()
+	log.Debug().Msgf("New message ID: %s", messageId)
+	tunnel := &svc.ActiveTunnel{
+		Conn:    conn,
+		Channel: make(chan []byte),
+	}
+
+	s.ctx.Mutex.Lock()
+	s.ctx.Messages[messageId] = tunnel
+	s.ctx.Mutex.Unlock()
+
+	go s.sendToVisitor(messageId)
+
 	reader := bufio.NewReader(conn)
 	headBuf := make([]byte, 1)
 	for {
@@ -288,7 +299,7 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 				break
 			}
 			data = append(headBuf, data...)
-			s.processMessage(data, conn)
+			s.processMessage(data, conn, messageId)
 			continue
 		}
 		buf := make([]byte, 2048)
@@ -302,33 +313,27 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 			break
 		}
 		data := append(headBuf, buf[:n]...)
-		s.processMessage(data, conn)
+		s.processMessage(data, conn, messageId)
 	}
+	close(tunnel.Channel)
+	s.ctx.Mutex.Lock()
+	delete(s.ctx.Messages, messageId)
+	s.ctx.Mutex.Unlock()
+	conn.Close()
 }
 
 // processMessage processes incoming messages from the client
-func (s *TcpServer) processMessage(messageStr []byte, conn net.Conn) {
+func (s *TcpServer) processMessage(messageStr []byte, conn net.Conn, mid string) {
 	log.Debug().Msgf("Processing message")
 	m, err := message.Unmarshal(messageStr)
 	if err != nil {
 		// 从外部接收到的数据，转发到内部
-		messageId := utils.GenerateID()
-		log.Debug().Msgf("New message ID: %s", messageId)
-		tunnel := &svc.ActiveTunnel{
-			Conn:    conn,
-			Channel: make(chan []byte),
-		}
-		// map 不是并发安全的，阻止其它线程操作map，操作即时完成，不影响性能（应该）
-		s.ctx.Mutex.Lock()
-		s.ctx.Messages[messageId] = tunnel
-		s.ctx.Mutex.Unlock()
 		m := message.Message{
 			Type: message.MessageTypeData,
 			Data: messageStr,
-			Id:   messageId,
+			Id:   mid,
 		}
 		s.handleData(m)
-		go s.sendToVisitor(messageId)
 		return
 	}
 
@@ -401,16 +406,16 @@ func (s *TcpServer) handleData(m message.Message) {
 	// 通过隧道ID获取隧道连接
 	if _, ok := s.ctx.Tunnels[tunnelID]; !ok {
 		log.Error().Msg("tunnel not found")
-		s.ctx.Messages[m.Id].Channel <- []byte(errors.Http500)
 		return
 	}
 
 	tunnel := s.ctx.Tunnels[tunnelID]
+	s.ctx.Mutex.Lock()
 	s.ctx.Messages[m.Id].Token = tunnel.Token
+	s.ctx.Mutex.Unlock()
 	mData, err := m.Encrypt(tunnel.Token)
 	if err != nil {
 		log.Error().Err(err).Msg("Error marshalling message")
-		s.ctx.Messages[m.Id].Channel <- []byte(errors.Http500)
 		return
 	}
 	tunnel.Channel <- mData
@@ -418,11 +423,13 @@ func (s *TcpServer) handleData(m message.Message) {
 
 // handleClientData processes the data from the client
 func (s *TcpServer) handleClientData(m message.Message) {
+	s.ctx.Mutex.Lock()
 	if _, ok := s.ctx.Messages[m.Id]; !ok {
 		log.Error().Msg("message conn not found")
 		return
 	}
 	tunnel := s.ctx.Messages[m.Id]
+	s.ctx.Mutex.Unlock()
 	data, err := m.Decrypt(tunnel.Token)
 	if err != nil {
 		fmt.Println("Error to decrypt data:", err)
@@ -465,9 +472,9 @@ func (s *TcpServer) sendDisconnectResponse(conn net.Conn, reason string) {
 
 // sendToVisitor sends client response to visitor with deal all Producter-Goroutine
 func (s *TcpServer) sendToVisitor(mid string) {
+	s.ctx.Mutex.Lock()
 	m := s.ctx.Messages[mid]
-	defer close(m.Channel)
-	defer delete(s.ctx.Messages, mid)
+	s.ctx.Mutex.Unlock()
 
 	for message := range m.Channel {
 		_, err := m.Conn.Write(message)
@@ -477,13 +484,11 @@ func (s *TcpServer) sendToVisitor(mid string) {
 		}
 		log.Debug().Msg("Data sent to visitor")
 	}
-	m.Conn.Close()
 }
 
 // sendToClient sends to client with deal all Producter-Goroutine
 func (s *TcpServer) sendToClient(tid string) {
 	tunnel := s.ctx.Tunnels[tid]
-	defer close(tunnel.Channel)
 
 	for message := range tunnel.Channel {
 		_, err := tunnel.Conn.Write(message)
