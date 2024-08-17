@@ -43,6 +43,11 @@ func main() {
 
 	// 打印内存使用情况
 	go func() {
+		log.Logger = log.Output(zerolog.ConsoleWriter{
+			Out:        os.Stdout,
+			NoColor:    false,        // 启用或禁用默认的颜色
+			TimeFormat: time.RFC3339, // 时间格式
+		})
 		for {
 			printMemoryUsage()
 			time.Sleep(5 * time.Second)
@@ -69,7 +74,7 @@ func main() {
 }
 
 func printMemoryUsage() {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	log.Info().Msgf("Alloc = %v MiB TotalAlloc = %v MiB Sys = %v MiB NumGC = %v", bToMb(m.Alloc), bToMb(m.TotalAlloc), bToMb(m.Sys), m.NumGC)

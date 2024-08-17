@@ -76,7 +76,8 @@ func ApiServer(ctx *svc.ServerCtx) {
 			response.Response(c, nil, err)
 			return
 		}
-		token := utils.GenerateID()
+		// 32位随机字符串
+		token := utils.GenerateID()[0:32]
 		tunnel.Token = token
 		err = ctx.TunnelModel.Update(tunnel)
 		response.Response(c, token, err)
