@@ -2,10 +2,10 @@ package transport
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -282,13 +282,15 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 	go s.sendToVisitor(messageId)
 
 	reader := bufio.NewReader(conn)
-	headBuf := make([]byte, 1)
+	var buffer bytes.Buffer
+
 	for {
+		headBuf := make([]byte, 1)
 		_, err := reader.Read(headBuf)
 		if err != nil {
 			break
 		}
-		if strings.Contains(string(headBuf), "{") {
+		if headBuf[0] == '{' {
 			data, err := reader.ReadBytes('}')
 			if err != nil {
 				if err == io.EOF {
@@ -302,8 +304,10 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 			s.processMessage(data, conn, messageId)
 			continue
 		}
-		buf := make([]byte, 2048)
-		n, err := reader.Read(buf)
+
+		// http
+		buffer.Write(headBuf)
+		line, err := reader.ReadBytes('\n')
 		if err != nil {
 			if err == io.EOF {
 				log.Info().Msg("Connection closed by client")
@@ -312,8 +316,13 @@ func (s *TcpServer) handleConn(conn net.Conn) {
 			}
 			break
 		}
-		data := append(headBuf, buf[:n]...)
-		s.processMessage(data, conn, messageId)
+		buffer.Write(line)
+		// http 请求结束
+		if len(line) == 1 && line[0] == '\n' {
+			// 处理http请求
+			s.processMessage(buffer.Bytes(), conn, messageId)
+			buffer.Reset()
+		}
 	}
 	close(tunnel.Channel)
 	s.ctx.Mutex.Lock()
