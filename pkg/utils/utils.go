@@ -44,11 +44,6 @@ func GetHostFromHttpMessage(m []byte) string {
 }
 
 func PrintMemoryUsage() {
-	log.Logger = log.Output(zerolog.ConsoleWriter{
-		Out:        os.Stdout,
-		NoColor:    false,        // 启用或禁用默认的颜色
-		TimeFormat: time.RFC3339, // 时间格式
-	})
 	// 打印内存使用情况
 	for {
 		var m runtime.MemStats
@@ -60,4 +55,12 @@ func PrintMemoryUsage() {
 
 func bToMb(b uint64) uint64 {
 	return b / 1024 / 1024
+}
+
+func InitLogger() {
+	log.Logger = log.Output(zerolog.ConsoleWriter{
+		Out:        os.Stdout,
+		NoColor:    false,        // 启用或禁用默认的颜色
+		TimeFormat: time.RFC3339, // 时间格式
+	})
 }

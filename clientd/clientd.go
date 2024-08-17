@@ -9,6 +9,7 @@ import (
 )
 
 func main() {
+	utils.InitLogger()
 	token := flag.String("token", "", "token to connect to the server")
 	flag.Parse()
 

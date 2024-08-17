@@ -4,6 +4,8 @@ import (
 	"os"
 	"time"
 
+	_ "net/http/pprof"
+
 	"github.com/obud-dev/tunnel/pkg/config"
 	"github.com/obud-dev/tunnel/pkg/model"
 	"github.com/obud-dev/tunnel/pkg/svc"
@@ -17,6 +19,12 @@ func main() {
 	api := os.Getenv("Api")
 	user := os.Getenv("User")
 	password := os.Getenv("Password")
+
+	utils.InitLogger()
+
+	// go func() {
+	// 	log.Err(http.ListenAndServe(":6060", nil))
+	// }()
 
 	var server svc.Server
 	svcCtx := svc.NewServerCtx(config.ServerConfig{
