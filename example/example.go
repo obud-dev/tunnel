@@ -7,7 +7,7 @@ import (
 
 func main() {
 	utils.InitLogger()
-	go utils.PrintMemoryUsage()
+	// go utils.PrintMemoryUsage()
 
 	r := gin.Default()
 	r.GET("/hello", func(c *gin.Context) {

@@ -4,8 +4,6 @@ import (
 	"os"
 	"time"
 
-	_ "net/http/pprof"
-
 	"github.com/obud-dev/tunnel/pkg/config"
 	"github.com/obud-dev/tunnel/pkg/model"
 	"github.com/obud-dev/tunnel/pkg/svc"
@@ -22,10 +20,6 @@ func main() {
 
 	utils.InitLogger()
 
-	// go func() {
-	// 	log.Err(http.ListenAndServe(":6060", nil))
-	// }()
-
 	var server svc.Server
 	svcCtx := svc.NewServerCtx(config.ServerConfig{
 		Host:     host,
@@ -35,7 +29,7 @@ func main() {
 		Password: password,
 	})
 
-	go utils.PrintMemoryUsage()
+	// go utils.PrintMemoryUsage()
 
 	// 插入测试数据tunnel
 	data := &model.Tunnel{ID: "ccf7258f-0e41-4e80-a4ea-18ed8195b98e", Name: "test", Uptime: time.Now().Unix(), Token: "1234abcd5678ef901234abcd"}

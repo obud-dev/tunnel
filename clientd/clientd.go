@@ -19,7 +19,7 @@ func main() {
 	}
 
 	// 打印内存使用情况
-	go utils.PrintMemoryUsage()
+	// go utils.PrintMemoryUsage()
 
 	// 连接到公网服务器
 	client, err := transport.NewTcpClient(*token)

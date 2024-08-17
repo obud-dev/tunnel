@@ -2,3 +2,4 @@ server/tunnel.db
 tunnel.db
 tmp
 *.exe
+utils/heap.out
