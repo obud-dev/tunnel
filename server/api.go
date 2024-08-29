@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"net/http"
+	"time"
 
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
@@ -36,6 +37,9 @@ func ApiServer(ctx *svc.ServerCtx) {
 			response.Response(c, nil, response.New(-1, err.Error()))
 			return
 		}
+		tunnel.ID = utils.GenerateID()
+		tunnel.Token = utils.GenerateID()[0:32]
+		tunnel.Uptime = time.Now().Unix()
 		err := ctx.TunnelModel.Insert(&tunnel)
 		response.Response(c, nil, err)
 	})
@@ -54,6 +58,7 @@ func ApiServer(ctx *svc.ServerCtx) {
 			return
 		}
 		tunnel.ID = id
+		tunnel.Uptime = time.Now().Unix()
 		err := ctx.TunnelModel.Update(&tunnel)
 		response.Response(c, nil, err)
 	})

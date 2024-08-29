@@ -20,29 +20,44 @@ import {
 import { Button } from "~/components/ui/button";
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "~/components/ui/dialog";
-import { Label } from "~/components/ui/label";
 import { Input } from "~/components/ui/input";
 import { Link } from "react-router-dom";
-import React from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "~/components/ui/form";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "~/components/ui/sheet";
 
 export default () => {
   const [data, setData] = useState<Tunnel[]>([]);
+  const [open, setOpen] = useState(false);
+  const [openEdit, setOpenEdit] = useState(false);
   const { toast } = useToast();
-  const [tunnelName, setTunnelName] = useState("");
+  const FormSchema = z.object({
+    name: z.string().min(4,{
+      message: "Tunnel name is too short",
+    }),
+    id: z.string().optional().readonly(),
+    token: z.string().optional().readonly(),
+    status: z.string().optional().readonly(),
+  })
+
+  const form = useForm<z.infer<typeof FormSchema>>({
+    resolver: zodResolver(FormSchema),
+  })
+
   const onGetTunnels = async () => {
     const { code, data, msg } = await request<Tunnel[]>("/api/tunnels");
     if (code === 0) {
@@ -53,80 +68,97 @@ export default () => {
   };
 
   const onCopyToken = async (id: string) => {
-    const resp = await request<string>(`/api/token/${id}`);
-    if (resp && resp.code === 0) {
-      await navigator.clipboard.writeText(resp.data);
+    const { code,data,msg } = await request<string>(`/api/token/${id}`);
+    if (code === 0) {
+      await navigator.clipboard.writeText(data);
       toast({
         title: "Success !",
         description: "The install token is already copy to clipboard.",
       });
-    } else {
-      toast({
-        title: "Failed !",
-        description: resp.msg,
-      });
+      return;
     }
+    toast({
+      title: "Failed !",
+      description: msg,
+    });
   };
 
   const onDeleted = async (id: string) => {
-    const resp = await request(`/api/tunnels/${id}`, {
+    const { code,msg } = await request(`/api/tunnels/${id}`, {
       method: "DELETE",
     });
-    if (resp && resp.code === 0) {
+    if (code === 0) {
       onGetTunnels();
       toast({
         title: "Success !",
         description: "tunnel deleted success.",
       });
-    } else {
-      toast({
-        title: "Failed !",
-        description: resp.msg,
-      });
+      return;
     }
+    toast({
+      title: "Failed !",
+      description: msg,
+    });
   };
 
   const onRefreshToken = async (id: string) => {
-    const resp = await request(`/api/tunnels/${id}/refreshtoken`, {
+    const { code,msg } = await request(`/api/tunnels/${id}/refreshtoken`, {
       method: "POST",
     });
-    if (resp && resp.code === 0) {
+    if (code === 0) {
       toast({
         title: "Success !",
         description: "tunnel token refresh success.",
       });
-    } else {
-      toast({
-        title: "Failed !",
-        description: resp.msg,
-      });
+      return;
     }
-  };
-
-  const handelInputName = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setTunnelName(value);
-  };
-
-  const newTunnel = async () => {
-    const tunnel: Tunnel = { name: tunnelName };
-    const resp = await request("/api/tunnels", {
-      method: "POST",
-      body: JSON.stringify(tunnel),
+    toast({
+      title: "Failed !",
+      description: msg
     });
-    if (resp && resp.code === 0) {
+  };
+
+  const newTunnel = async (data: z.infer<typeof FormSchema>) => {
+    setOpen(false)
+    form.reset()
+    const { code,msg } = await request("/api/tunnels", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    if (code === 0) {
       onGetTunnels();
       toast({
         title: "Success !",
         description: "tunnel add success.",
       });
-    } else {
-      toast({
-        title: "Failed !",
-        description: resp.msg,
-      });
+      return;
     }
+    toast({
+      title: "Failed !",
+      description: msg,
+    });
   };
+
+  const onEditSubmit = async (data: z.infer<typeof FormSchema>) => {
+    setOpenEdit(false)
+    form.reset()
+    const { code,msg } = await request(`/api/tunnels/${data.id}`, {
+      method: "PUT",
+      body: JSON.stringify(data)
+    })
+    if (code === 0) {
+      onGetTunnels();
+      toast({
+        title: "Success !",
+        description: "tunnel edit success.",
+      });
+      return;
+    }
+    toast({
+      title: "Failed !",
+      description: msg,
+    });
+  }
 
   useEffect(() => {
     onGetTunnels();
@@ -184,7 +216,13 @@ export default () => {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => {}}>
+                      <DropdownMenuItem onClick={() => {
+                        setOpenEdit(true)
+                        form.setValue("id",item.id as string)
+                        form.setValue("name",item.name)
+                        form.setValue("token",item.token)
+                        form.setValue("status",item.status)
+                      }}>
                         <PencilSquareIcon className="h-4 w-4 mr-2" />
                         <span>Edit</span>
                       </DropdownMenuItem>
@@ -210,7 +248,7 @@ export default () => {
         </Table>
       </CardContent>
       <div className="flex justify-center items-center py-4">
-        <Dialog>
+        <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button className="w-64">Add Tunnel</Button>
           </DialogTrigger>
@@ -221,28 +259,62 @@ export default () => {
                 Input the name and submit,and then you will get a install token.
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">
-                  Tunnel Name
-                </Label>
-                <Input
-                  id="name"
-                  className="col-span-3"
-                  value={tunnelName}
-                  onChange={handelInputName}
+            <Form {...form}>
+              <form
+                onSubmit={form.handleSubmit(newTunnel)}
+                className="space-y-6 w-full"
+              >
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tunnel Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-            </div>
-            <DialogFooter>
-              <DialogClose>
-                <Button type="submit" onClick={newTunnel}>
-                  Submit
-                </Button>
-              </DialogClose>
-            </DialogFooter>
+                <Button type="submit" className="w-full">Submit</Button>
+              </form>
+            </Form>
           </DialogContent>
         </Dialog>
+        <Sheet open={openEdit} onOpenChange={setOpenEdit}>
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle>Edit Tunnel</SheetTitle>
+              <SheetDescription>
+                {form.getValues().id}
+              </SheetDescription>
+            </SheetHeader>
+            <Form {...form}>
+              <form
+                  onSubmit={form.handleSubmit(onEditSubmit)}
+                  className="space-y-6 w-full py-4"
+                >
+                <FormField 
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tunnel Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" className="w-full">
+                  Update
+                </Button>
+              </form>
+            </Form>
+          </SheetContent>
+        </Sheet>
       </div>
     </Card>
   );
