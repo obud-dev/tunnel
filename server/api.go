@@ -65,11 +65,28 @@ func ApiServer(ctx *svc.ServerCtx) {
 
 	api.DELETE("/tunnels/:id", func(c *gin.Context) {
 		id := c.Param("id")
+		var routes []model.Route
+
 		tunnel, err := ctx.TunnelModel.GetTunnelByID(id)
 		if err != nil {
 			response.Response(c, nil, err)
 			return
 		}
+		routes, err = ctx.RouteModel.GetRoutesByTunnelID(id)
+		if err != nil {
+			response.Response(c, nil, err)
+			return
+		}
+		for _, route := range routes {
+			if route.TunnelID == id {
+				err = ctx.RouteModel.Delete(&route)
+				if err != nil {
+					response.Response(c, nil, err)
+					return
+				}
+			}
+		}
+		ctx.DelTunnel(tunnel.ID)
 		err = ctx.TunnelModel.Delete(tunnel)
 		response.Response(c, nil, err)
 	})
@@ -84,6 +101,7 @@ func ApiServer(ctx *svc.ServerCtx) {
 		// 32位随机字符串
 		token := utils.GenerateID()[0:32]
 		tunnel.Token = token
+		ctx.DelTunnel(tunnel.ID)
 		err = ctx.TunnelModel.Update(tunnel)
 		response.Response(c, token, err)
 	})
@@ -92,6 +110,41 @@ func ApiServer(ctx *svc.ServerCtx) {
 		tid := c.Param("tid")
 		routes, err := ctx.RouteModel.GetRoutesByTunnelID(tid)
 		response.Response(c, routes, err)
+	})
+
+	api.POST("/routes", func(c *gin.Context) {
+		var route model.Route
+		if err := c.BindJSON(&route); err != nil {
+			response.Response(c, nil, response.New(-1, err.Error()))
+			return
+		}
+		route.ID = utils.GenerateID()
+		err := ctx.RouteModel.Insert(&route)
+		ctx.UpdateRoutes()
+		response.Response(c, nil, err)
+	})
+
+	api.DELETE("/routes/:id", func(c *gin.Context) {
+		id := c.Param("id")
+		route, err := ctx.RouteModel.GetRouteByID(id)
+		if err != nil {
+			response.Response(c, nil, err)
+			return
+		}
+		err = ctx.RouteModel.Delete(route)
+		ctx.UpdateRoutes()
+		response.Response(c, nil, err)
+	})
+
+	api.PUT("/routes", func(c *gin.Context) {
+		var route model.Route
+		if err := c.BindJSON(&route); err != nil {
+			response.Response(c, nil, response.New(-1, err.Error()))
+			return
+		}
+		err := ctx.RouteModel.Update(&route)
+		ctx.UpdateRoutes()
+		response.Response(c, nil, err)
 	})
 
 	api.GET("/token/:tid", func(c *gin.Context) {

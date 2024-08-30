@@ -92,3 +92,23 @@ func NewServerCtx(config config.ServerConfig) *ServerCtx {
 		Messages:    map[string]*ActiveTunnel{},
 	}
 }
+
+func (ctx *ServerCtx) UpdateRoutes() error {
+	routes, err := ctx.RouteModel.GetRoutes()
+	if err != nil {
+		return err
+	}
+	ctx.Routes = routes
+	return nil
+}
+
+func (ctx *ServerCtx) DelTunnel(tid string) error {
+	tunnel := ctx.Tunnels[tid]
+	tunnel.Conn.Close()
+	close(tunnel.Channel)
+	ctx.Mutex.Lock()
+	delete(ctx.Tunnels, tid)
+	ctx.Mutex.Unlock()
+
+	return nil
+}

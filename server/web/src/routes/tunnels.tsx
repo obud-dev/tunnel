@@ -39,6 +39,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "~/components/ui/form";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "~/components/ui/sheet";
+import { uptime } from "process";
 
 export default () => {
   const [data, setData] = useState<Tunnel[]>([]);
@@ -53,6 +54,13 @@ export default () => {
     token: z.string().optional().readonly(),
     status: z.string().optional().readonly(),
   })
+
+  const defaultValues = {
+    id: "",
+    name: "",
+    token: "",
+    status: "",
+  }
 
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
@@ -120,7 +128,6 @@ export default () => {
 
   const newTunnel = async (data: z.infer<typeof FormSchema>) => {
     setOpen(false)
-    form.reset()
     const { code,msg } = await request("/api/tunnels", {
       method: "POST",
       body: JSON.stringify(data),
@@ -141,7 +148,6 @@ export default () => {
 
   const onEditSubmit = async (data: z.infer<typeof FormSchema>) => {
     setOpenEdit(false)
-    form.reset()
     const { code,msg } = await request(`/api/tunnels/${data.id}`, {
       method: "PUT",
       body: JSON.stringify(data)
@@ -162,7 +168,10 @@ export default () => {
 
   useEffect(() => {
     onGetTunnels();
-  }, []);
+    if(!openEdit) {
+      form.reset(defaultValues)
+    }
+  }, [openEdit,form]);
 
   return (
     <Card className="border-none">
@@ -217,11 +226,8 @@ export default () => {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
                       <DropdownMenuItem onClick={() => {
-                        setOpenEdit(true)
-                        form.setValue("id",item.id as string)
-                        form.setValue("name",item.name)
-                        form.setValue("token",item.token)
-                        form.setValue("status",item.status)
+                        setOpenEdit(true);
+                        form.reset(item);
                       }}>
                         <PencilSquareIcon className="h-4 w-4 mr-2" />
                         <span>Edit</span>

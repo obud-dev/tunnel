@@ -38,19 +38,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select"
+import { EllipsisVerticalIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/24/solid";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "~/components/ui/dropdown-menu";
 
 const FormSchema = z.object({
+  id: z.string().optional().readonly(),
   protocol: z.string().min(2, {
     message: "Protocol is too short",
   }),
   hostname: z.string(),
   prefix: z.string(),
   target: z.string(),
+  tunnel_id: z.string(),
 });
 
 export default () => {
   const { id } = useParams();
   const [data, setData] = useState<Route[]>([]);
+  const [open, setOpen] = useState(false);
   const onGetRoutes = async () => {
     const resp = await request<Route[]>(`/api/routes/${id}`);
     if (resp && resp.code === 0) {
@@ -58,24 +63,65 @@ export default () => {
     }
   };
 
+  const defaultValues = {
+    id: "",
+    tunnel_id: id,
+    protocol: "",
+    hostname: "",
+    prefix: "",
+    target: "",
+  }
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
+    defaultValues,
   });
 
-  function onSubmit(data: z.infer<typeof FormSchema>) {
+  const onSubmit = async (data: z.infer<typeof FormSchema>) => {
+    setOpen(false)
+
+    const method = data.id ? "PUT" : "POST"
+    const { code,msg } = await request("/api/routes",{
+      method,
+      body: JSON.stringify(data),
+    });
+    if(code === 0) {
+      onGetRoutes();
+      toast({
+        title: "Success !",
+        description: "Route update success.",
+      });
+      return;
+    }
     toast({
-      title: "You submitted the following values:",
-      description: (
-        <pre className="mt-2 w-[340px] rounded-md bg-slate-950 p-4">
-          <code className="text-white">{JSON.stringify(data, null, 2)}</code>
-        </pre>
-      ),
+      title: "Failed !",
+      description: msg,
+    });
+  }
+
+  const onDelete = async (id: string) => {
+    const { code,msg } = await request(`/api/routes/${id}`,{
+      method: "DELETE"
+    });
+    if(code === 0) {
+      onGetRoutes();
+      toast({
+        title: "Success !",
+        description: "Route delete success.",
+      });
+      return;
+    }
+    toast({
+      title: "Failed !",
+      description: msg,
     });
   }
 
   useEffect(() => {
     onGetRoutes();
-  }, []);
+    if(!open) {
+      form.reset(defaultValues)
+    }
+  }, [open,form]);
   return (
     <Card className="border-none">
       <CardHeader>
@@ -89,6 +135,7 @@ export default () => {
               <TableHead>Hostname</TableHead>
               <TableHead>Prefix</TableHead>
               <TableHead className="text-right">Target</TableHead>
+              <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -98,13 +145,42 @@ export default () => {
                 <TableCell className="underline">{item.hostname}</TableCell>
                 <TableCell>{item.prefix}</TableCell>
                 <TableCell className="text-right">{item.target}</TableCell>
+                <TableCell>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                        variant="ghost"
+                        className="rounded-full"
+                        size="icon"
+                      >
+                      <EllipsisVerticalIcon className="size-5" />
+                    </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onClick={() => {
+                        setOpen(true);
+                        form.reset(item);
+                      }}>
+                        <PencilSquareIcon className="h-4 w-4 mr-2" />
+                        <span>Edit</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        className="text-destructive"
+                        onClick={() => onDelete(item.id)}
+                      >
+                        <TrashIcon className="h-4 w-4 mr-2" />
+                        <span>Delete</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </CardContent>
       <div className="flex justify-center items-center py-4">
-        <Sheet>
+        <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
             <Button className="w-64">Add Route</Button>
           </SheetTrigger>
