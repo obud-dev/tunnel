@@ -37,9 +37,21 @@ import {
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "~/components/ui/form";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "~/components/ui/sheet";
-import { uptime } from "process";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "~/components/ui/form";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "~/components/ui/sheet";
 
 export default () => {
   const [data, setData] = useState<Tunnel[]>([]);
@@ -47,24 +59,24 @@ export default () => {
   const [openEdit, setOpenEdit] = useState(false);
   const { toast } = useToast();
   const FormSchema = z.object({
-    name: z.string().min(4,{
+    name: z.string().min(4, {
       message: "Tunnel name is too short",
     }),
     id: z.string().optional().readonly(),
     token: z.string().optional().readonly(),
     status: z.string().optional().readonly(),
-  })
+  });
 
   const defaultValues = {
     id: "",
     name: "",
     token: "",
     status: "",
-  }
+  };
 
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
-  })
+  });
 
   const onGetTunnels = async () => {
     const { code, data, msg } = await request<Tunnel[]>("/api/tunnels");
@@ -76,7 +88,7 @@ export default () => {
   };
 
   const onCopyToken = async (id: string) => {
-    const { code,data,msg } = await request<string>(`/api/token/${id}`);
+    const { code, data, msg } = await request<string>(`/api/token/${id}`);
     if (code === 0) {
       await navigator.clipboard.writeText(data);
       toast({
@@ -92,7 +104,7 @@ export default () => {
   };
 
   const onDeleted = async (id: string) => {
-    const { code,msg } = await request(`/api/tunnels/${id}`, {
+    const { code, msg } = await request(`/api/tunnels/${id}`, {
       method: "DELETE",
     });
     if (code === 0) {
@@ -110,7 +122,7 @@ export default () => {
   };
 
   const onRefreshToken = async (id: string) => {
-    const { code,msg } = await request(`/api/tunnels/${id}/refreshtoken`, {
+    const { code, msg } = await request(`/api/tunnels/${id}/refreshtoken`, {
       method: "POST",
     });
     if (code === 0) {
@@ -122,13 +134,13 @@ export default () => {
     }
     toast({
       title: "Failed !",
-      description: msg
+      description: msg,
     });
   };
 
   const newTunnel = async (data: z.infer<typeof FormSchema>) => {
-    setOpen(false)
-    const { code,msg } = await request("/api/tunnels", {
+    setOpen(false);
+    const { code, msg } = await request("/api/tunnels", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -147,11 +159,11 @@ export default () => {
   };
 
   const onEditSubmit = async (data: z.infer<typeof FormSchema>) => {
-    setOpenEdit(false)
-    const { code,msg } = await request(`/api/tunnels/${data.id}`, {
+    setOpenEdit(false);
+    const { code, msg } = await request(`/api/tunnels/${data.id}`, {
       method: "PUT",
-      body: JSON.stringify(data)
-    })
+      body: JSON.stringify(data),
+    });
     if (code === 0) {
       onGetTunnels();
       toast({
@@ -164,14 +176,14 @@ export default () => {
       title: "Failed !",
       description: msg,
     });
-  }
+  };
 
   useEffect(() => {
     onGetTunnels();
-    if(!openEdit) {
-      form.reset(defaultValues)
+    if (!openEdit) {
+      form.reset(defaultValues);
     }
-  }, [openEdit,form]);
+  }, [openEdit, form]);
 
   return (
     <Card className="border-none">
@@ -225,10 +237,12 @@ export default () => {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => {
-                        setOpenEdit(true);
-                        form.reset(item);
-                      }}>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setOpenEdit(true);
+                          form.reset(item);
+                        }}
+                      >
                         <PencilSquareIcon className="h-4 w-4 mr-2" />
                         <span>Edit</span>
                       </DropdownMenuItem>
@@ -283,7 +297,9 @@ export default () => {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full">Submit</Button>
+                <Button type="submit" className="w-full">
+                  Submit
+                </Button>
               </form>
             </Form>
           </DialogContent>
@@ -292,16 +308,14 @@ export default () => {
           <SheetContent>
             <SheetHeader>
               <SheetTitle>Edit Tunnel</SheetTitle>
-              <SheetDescription>
-                {form.getValues().id}
-              </SheetDescription>
+              <SheetDescription>{form.getValues().id}</SheetDescription>
             </SheetHeader>
             <Form {...form}>
               <form
-                  onSubmit={form.handleSubmit(onEditSubmit)}
-                  className="space-y-6 w-full py-4"
-                >
-                <FormField 
+                onSubmit={form.handleSubmit(onEditSubmit)}
+                className="space-y-6 w-full py-4"
+              >
+                <FormField
                   control={form.control}
                   name="name"
                   render={({ field }) => (
